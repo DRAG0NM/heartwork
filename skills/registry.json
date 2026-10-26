@@ -1,0 +1,152 @@
+{
+  "kind": "coach_skill_registry",
+  "schema_version": 1,
+  "version": "1.0.0",
+  "skills": {
+    "coach-recovery": {
+      "tasks": [
+        "daily_guidance",
+        "post_workout",
+        "weekly_review"
+      ],
+      "triggers": [
+        "恢复",
+        "疲劳",
+        "今天练",
+        "休息",
+        "减量",
+        "状态",
+        "HRV",
+        "睡眠不足"
+      ],
+      "default_for": [
+        "daily_guidance"
+      ],
+      "description": "恢复、疲劳、睡眠和训练负荷判断。用户询问今天是否训练、休息、减量或恢复状态时使用。"
+    },
+    "coach-pain": {
+      "tasks": [
+        "pain_followup",
+        "daily_guidance",
+        "post_workout"
+      ],
+      "triggers": [
+        "疼",
+        "痛",
+        "受伤",
+        "肿",
+        "无法承重",
+        "心悸",
+        "胸痛",
+        "晕厥"
+      ],
+      "default_for": [
+        "pain_followup"
+      ],
+      "description": "疼痛、受伤、功能受限与红旗症状的跟进。出现疼痛、肿胀、胸痛、心悸、晕厥时使用。"
+    },
+    "coach-running": {
+      "tasks": [
+        "daily_guidance",
+        "post_workout",
+        "weekly_review"
+      ],
+      "triggers": [
+        "跑步",
+        "配速",
+        "心率",
+        "间歇",
+        "节奏跑",
+        "长跑",
+        "步频"
+      ],
+      "default_for": [
+        "post_workout"
+      ],
+      "description": "跑步训练与运动后反馈的解读：配速、心率、间歇、长跑。"
+    },
+    "coach-planning": {
+      "tasks": [
+        "weekly_review",
+        "daily_guidance"
+      ],
+      "triggers": [
+        "计划",
+        "课表",
+        "下周",
+        "周期",
+        "跑量",
+        "强度分布",
+        "安排训练"
+      ],
+      "default_for": [
+        "weekly_review"
+      ],
+      "description": "训练计划与周复盘：下周安排、跑量、强度分布。任何改计划建议都需人确认。"
+    },
+    "coach-sleep": {
+      "tasks": [
+        "daily_guidance",
+        "weekly_review"
+      ],
+      "triggers": [
+        "睡眠",
+        "睡不着",
+        "作息",
+        "睡眠债",
+        "起床",
+        "入睡"
+      ],
+      "default_for": [],
+      "description": "睡眠时长、规律性与睡眠债的解读。"
+    },
+    "coach-weight-loss": {
+      "tasks": [
+        "weekly_review"
+      ],
+      "triggers": [
+        "体重",
+        "减重",
+        "减脂",
+        "体脂",
+        "腰围",
+        "平台期",
+        "BMI"
+      ],
+      "default_for": [],
+      "description": "体重与身体成分趋势的周级解读，强调恢复优先、不鼓励极端节食。"
+    },
+    "coach-posture": {
+      "tasks": [
+        "daily_guidance",
+        "post_workout",
+        "weekly_review"
+      ],
+      "triggers": [
+        "姿势",
+        "体态",
+        "动作",
+        "力量",
+        "拉伸",
+        "灵活",
+        "核心"
+      ],
+      "default_for": [],
+      "description": "姿势、动作质量与力量/灵活性补充。只给保护性、低风险建议。"
+    },
+    "coach-review": {
+      "tasks": [
+        "weekly_review"
+      ],
+      "triggers": [
+        "复盘",
+        "周报",
+        "总结",
+        "回顾",
+        "本周"
+      ],
+      "default_for": [],
+      "description": "一周复盘的结构与措辞：先事实、再解读、再建议，并列出不确定性。"
+    }
+  }
+}

@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sports Eval · 体征画</title>
+<style>
+:root{
+  --paper:#f4f1ea;--paper-2:#fbf9f4;--ink:#1f2326;--ink-2:#4d5257;--ink-3:#868b90;--line:#e2ddd2;--line-2:#d3ccbe;
+  --good:#2f8f6f;--good-bg:#e1f0e9;--near:#5c6166;--near-bg:#ecebe6;--strain:#b8741a;--strain-bg:#f6ead6;--alarm:#c0392b;--alarm-bg:#f8e3df;
+  --f-recovery:#2f8f8a;--f-sleep:#6d5fd0;--f-load:#c98a25;--f-stress:#c8604a;--f-performance:#3a76b8;
+  --art-bg:#f1ede4;--art-ghost:#cfc8b8;
+  --sans:Inter,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --serif:"Noto Serif SC","Source Han Serif SC","Songti SC","SimSun",Georgia,serif;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#101315;--paper-2:#161a1d;--ink:#e6e8e6;--ink-2:#b4b9bb;--ink-3:#7b8286;--line:#252b2f;--line-2:#323a3f;
+  --good:#6cc9a5;--good-bg:#173229;--near:#a4aaad;--near-bg:#1f2427;--strain:#e3a956;--strain-bg:#33281a;--alarm:#ef7a6a;--alarm-bg:#3a1f1b;
+  --f-recovery:#5ec4b6;--f-sleep:#9b8cf0;--f-load:#e8b04b;--f-stress:#ef8a72;--f-performance:#7cb2ee;
+  --art-bg:#0d1114;--art-ghost:#2f373c;}}
+:root[data-theme="dark"]{
+  --paper:#101315;--paper-2:#161a1d;--ink:#e6e8e6;--ink-2:#b4b9bb;--ink-3:#7b8286;--line:#252b2f;--line-2:#323a3f;
+  --good:#6cc9a5;--good-bg:#173229;--near:#a4aaad;--near-bg:#1f2427;--strain:#e3a956;--strain-bg:#33281a;--alarm:#ef7a6a;--alarm-bg:#3a1f1b;
+  --f-recovery:#5ec4b6;--f-sleep:#9b8cf0;--f-load:#e8b04b;--f-stress:#ef8a72;--f-performance:#7cb2ee;
+  --art-bg:#0d1114;--art-ghost:#2f373c;}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.65 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{white-space:nowrap;cursor:pointer;background:transparent;border:1px solid var(--line-2);border-radius:8px;padding:6px 12px;transition:background .2s var(--ease),border-color .2s}
+button:hover{background:var(--paper-2);border-color:var(--ink-3)}
+button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button.primary:hover{opacity:.88}
+button.ghost{border-color:transparent}
+input,select,textarea{background:var(--paper-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:100%}
+input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--f-recovery)}
+textarea{resize:vertical;font-family:var(--mono);font-size:12.5px}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--f-recovery);outline-offset:1px}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-3)}
+.small{font-size:12.5px}
+.serif{font-family:var(--serif)}
+header{display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--line)}
+header .mark{font-family:var(--serif);font-size:18px;letter-spacing:.5px}
+header .mark b{font-weight:500;color:var(--f-recovery)}
+header .grow{flex:1}
+header .pill{font-size:12.5px;color:var(--ink-3)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:0;min-height:calc(100vh - 57px)}
+main{padding:24px 32px 80px;min-width:0}
+aside{border-left:1px solid var(--line);padding:22px 22px 80px;background:var(--paper-2)}
+@media (max-width:640px){#art{aspect-ratio:4/3}header .pill{display:none}.legend{display:none}}
+@media (max-width:1060px){.layout{grid-template-columns:1fr}aside{border-left:0;border-top:1px solid var(--line)}main{padding:18px 16px 40px}header{padding:12px 16px}}
+.eyebrow{font-size:12px;letter-spacing:.08em;color:var(--ink-3);margin:0 0 6px}
+h1.day{font-family:var(--serif);font-weight:400;font-size:30px;line-height:1.25;margin:0 0 4px}
+.caption{color:var(--ink-2);margin:0 0 14px}
+.art-wrap{position:relative;border-radius:14px;overflow:hidden;background:var(--art-bg);border:1px solid var(--line)}
+#art{display:block;width:100%;height:auto;aspect-ratio:16/7}
+#art .strand{fill:none;stroke-linecap:round;transition:opacity .25s var(--ease),stroke-width .25s var(--ease)}
+#art .fam{cursor:pointer}
+#art.focusing .fam{opacity:.16}
+#art.focusing .fam.on{opacity:1}
+#art .fam.on .strand.lead{stroke-width:4}
+#art .hit{fill:none;stroke:transparent;stroke-width:22;pointer-events:stroke}
+#art .draw{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 1.6s var(--ease) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){#art .draw{animation:none;stroke-dashoffset:0}}
+.legend{position:absolute;right:14px;top:12px;display:flex;gap:12px;font-size:11.5px;color:var(--ink-3);flex-wrap:wrap;justify-content:flex-end}
+.legend span{cursor:pointer;white-space:nowrap}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.tip{position:absolute;pointer-events:none;background:var(--paper);border:1px solid var(--line-2);border-radius:10px;padding:8px 11px;font-size:12.5px;min-width:180px;opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;z-index:3}
+.tip.show{opacity:1;transform:none}
+.tip b{font-weight:500}
+.scrub{display:flex;gap:6px;margin:12px 0 4px;overflow-x:auto;padding-bottom:4px}
+.scrub button{padding:4px;border-radius:10px;border:1px solid transparent;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:62px}
+.scrub button[aria-pressed="true"]{border-color:var(--ink-2);background:var(--paper-2)}
+.scrub svg{width:54px;height:24px;border-radius:5px;background:var(--art-bg)}
+.scrub small{font-size:11px;color:var(--ink-3)}
+.prov{margin:10px 0 0;font-size:13px;color:var(--ink-2);min-height:22px}
+.prov code{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+section.thread{margin-top:34px}
+.ask{display:flex;gap:8px;align-items:stretch;border:1px solid var(--line-2);border-radius:14px;padding:6px;background:var(--paper-2)}
+.ask input{border:0;background:transparent;font-family:var(--serif);font-size:17px;padding:8px 10px}
+.ask input:focus{outline:none}
+.ask select{width:auto;border:0;background:transparent;color:var(--ink-3);font-size:13px}
+.hint{font-size:12.5px;color:var(--ink-3);margin:8px 2px 0}
+.job{margin-top:28px;border-top:1px solid var(--line);padding-top:20px;animation:rise .5s var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+@media (prefers-reduced-motion:reduce){.job{animation:none}}
+.q{font-family:var(--serif);font-size:20px;line-height:1.4;margin:0 0 10px}
+.meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink-3)}
+.tag{border:1px solid var(--line-2);border-radius:999px;padding:1px 9px;font-size:12px;color:var(--ink-2)}
+.tag.green{border-color:transparent;background:var(--good-bg);color:var(--good)}
+.tag.yellow{border-color:transparent;background:var(--strain-bg);color:var(--strain)}
+.tag.red{border-color:transparent;background:var(--alarm-bg);color:var(--alarm)}
+.steps{display:grid;gap:10px;margin-top:14px}
+.step{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start}
+.step .n{width:22px;height:22px;border-radius:50%;border:1px solid var(--line-2);font-size:11.5px;display:flex;align-items:center;justify-content:center;color:var(--ink-3);margin-top:3px}
+.step.done .n{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.answer{margin-top:16px;font-family:var(--serif);font-size:16.5px;line-height:1.8}
+.answer h4{font-family:var(--sans);font-size:12px;letter-spacing:.08em;color:var(--ink-3);font-weight:500;margin:18px 0 6px}
+.answer p{margin:0 0 10px}
+.ev{font-family:var(--sans);font-size:12px;display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:0 9px 0 7px;margin:0 3px;border:1px solid var(--line-2);cursor:pointer;vertical-align:2px;line-height:20px;transition:background .2s}
+.ev i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.ev:hover,.ev.on{background:var(--paper-2);border-color:var(--ink-3)}
+.act{display:inline-block;font-family:var(--sans);font-size:11.5px;color:var(--ink-3);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-right:6px;vertical-align:2px}
+.errors{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--alarm-bg);color:var(--alarm);font-size:13px}
+.errors code{font-family:var(--mono);font-size:12px}
+.receipt{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:12px}
+aside h3{font-size:12px;letter-spacing:.08em;color:var(--ink-3);font-weight:500;margin:26px 0 10px}
+aside h3:first-child{margin-top:0}
+.glance{display:grid;grid-template-columns:118px 1fr;gap:14px;align-items:center}
+.glance .big{font-family:var(--serif);font-size:19px;line-height:1.35}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border-radius:8px;padding:4px 9px;font-size:12.5px;border:1px solid transparent;cursor:pointer;line-height:1.35;text-align:left}
+.chip small{display:block;font-size:11px;opacity:.8}
+.chip.good{background:var(--good-bg);color:var(--good)}
+.chip.near{background:var(--near-bg);color:var(--near)}
+.chip.strain{background:var(--strain-bg);color:var(--strain)}
+.chip.sel,.chip.on{border-color:currentColor}
+.axes{display:grid;gap:7px}
+.axis{display:grid;grid-template-columns:118px 1fr 30px;gap:8px;align-items:center;font-size:12.5px;cursor:pointer}
+.axis .bar{position:relative;height:6px;background:var(--line);border-radius:3px}
+.axis .bar::after{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--ink-3)}
+.axis .bar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.axis.off{opacity:.45;cursor:default}
+.card{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--paper)}
+.sugg+.sugg{margin-top:10px}
+.form{display:grid;gap:8px}
+.form label{font-size:12.5px;color:var(--ink-2);display:grid;gap:3px}
+.form .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex!important;grid-template-columns:none;align-items:center;gap:6px}
+.check input{width:auto}
+.drop{display:block;cursor:pointer;border:1.5px dashed var(--line-2);border-radius:12px;padding:18px;text-align:center;color:var(--ink-3);font-size:13px;transition:border-color .2s,background .2s}
+.drop.over{border-color:var(--f-recovery);background:var(--paper)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:999px;font-size:13px;opacity:0;transition:all .25s var(--ease);z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.empty{padding:60px 20px;text-align:center}
+details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">Sports Eval <b>·</b> 体征画</div>
+  <div class="grow"></div>
+  <span class="pill" id="ws"></span>
+  <button class="ghost" id="themeBtn" aria-label="切换明暗">◐</button>
+</header>
+<div class="layout">
+<main>
+  <p class="eyebrow" id="eyebrow">—</p>
+  <h1 class="day" id="dayTitle">正在读取你的数据…</h1>
+  <p class="caption" id="caption"></p>
+  <div class="art-wrap">
+    <svg id="art" viewBox="0 0 1600 700" preserveAspectRatio="xMidYMid slice" role="img" aria-label="由当日身体数据生成的画"></svg>
+    <div class="legend" id="legend"></div>
+    <div class="tip" id="tip"></div>
+  </div>
+  <div class="scrub" id="scrub" aria-label="选择日期"></div>
+  <p class="prov" id="prov"><span class="muted">悬停任一笔触看它来自哪条数据；点击可固定。灰色虚线代表这一天没有该数据，不做填补。</span></p>
+
+  <section class="thread">
+    <p class="eyebrow">教练</p>
+    <form class="ask" id="askForm">
+      <input id="askInput" placeholder="今天还适合跑间歇吗？" autocomplete="off">
+      <select id="askTask" aria-label="任务">
+        <option value="">自动判断</option><option value="daily_guidance">今日建议</option>
+        <option value="post_workout">训练后</option><option value="weekly_review">周复盘</option>
+        <option value="pain_followup">疼痛跟进</option>
+      </select>
+      <button class="primary" type="submit">生成作业</button>
+    </form>
+    <p class="hint">作业里只有确定性计算的数据和规则。把提示词交给任意 AI（ChatGPT、Gemini、Claude、DeepSeek…），再把它的 JSON 回复贴回来验证；接了 MCP 的 agent 提交后也会自动出现在这里。</p>
+    <div id="jobs"></div>
+  </section>
+</main>
+
+<aside>
+  <h3>一眼</h3>
+  <div class="glance">
+    <svg id="ring" viewBox="0 0 120 120" width="118" height="118" aria-label="恢复轴"></svg>
+    <div><div class="big" id="glanceText">—</div><div class="small muted" id="glanceSub"></div><div style="margin-top:8px" id="gate"></div></div>
+  </div>
+
+  <h3>聚焦 · 相对你自己的 28 日常态</h3>
+  <div class="chips" id="chips"></div>
+
+  <h3 id="exploreTitle">探索</h3>
+  <svg id="spark" viewBox="0 0 316 120" width="100%" aria-label="指标趋势"></svg>
+  <p class="small muted" style="margin:4px 0 0">灰带是前 28 天的四分位区间；50 只是你的个人常态锚点，不是健康及格线。</p>
+
+  <h3>多维状态（实验层）</h3>
+  <div class="axes" id="axes"></div>
+
+  <h3>待你确认</h3>
+  <div id="suggs"><p class="small muted">暂无。改计划的建议只会出现在这里，只有你能盖章。</p></div>
+
+  <h3>打卡</h3>
+  <form class="form" id="checkin">
+    <div class="two">
+      <label>类型<select name="type"><option value="morning_checkin">晨间</option><option value="post_workout_feedback">训练后</option><option value="pain_followup">疼痛</option><option value="weekly_checkin">周体感</option><option value="note">备注</option></select></label>
+      <label>日期<input name="date" type="date"></label>
+    </div>
+    <div class="two">
+      <label>主观恢复 <span class="num muted" data-out="subjective_recovery">7</span><input name="subjective_recovery" type="range" min="1" max="10" value="7"></label>
+      <label>疼痛 <span class="num muted" data-out="pain">0</span><input name="pain" type="range" min="0" max="10" value="0"></label>
+    </div>
+    <label>RPE（训练后，可空）<input name="rpe" type="number" min="0" max="10" step="1"></label>
+    <label class="check"><input type="checkbox" name="illness">生病</label>
+    <details><summary>红旗信号（任一会触发红灯）</summary>
+      <div class="form" style="margin-top:6px" id="flags"></div>
+    </details>
+    <label>备注<input name="note" maxlength="1000" placeholder="右小腿有点紧"></label>
+    <button type="submit">记一笔</button>
+  </form>
+
+  <h3>导入</h3>
+  <label class="drop" id="drop">把 FIT / GPX / TCX / CSV / Apple Health 导出拖到这里<br><span class="small">或点击选择 · 文件只存进本机工作区</span><input type="file" id="file" multiple hidden></label>
+  <div class="small muted" id="importLog" style="margin-top:6px"></div>
+
+  <h3>当前计划</h3>
+  <p class="serif" id="plan" style="margin:0">—</p>
+
+  <h3>档案</h3>
+  <form class="form" id="profile">
+    <div class="two"><label>最大心率<input name="hr_max" type="number" min="100" max="230"></label><label>静息心率<input name="hr_rest" type="number" min="25" max="120"></label></div>
+    <label>目标<input name="goal" placeholder="十月半马 1:55"></label>
+    <button type="submit">保存</button>
+  </form>
+
+  <h3>自检</h3>
+  <div class="row"><button id="evalBtn">运行教练评测</button><a class="small" href="/api/report" target="_blank">本周报告 JSON</a></div>
+  <p class="small muted" id="evalOut"></p>
+</aside>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const SVGNS="http://www.w3.org/2000/svg";
+const FAM={
+  stress:{label:"压力",keys:["stress"],y:.17},
+  recovery:{label:"恢复",keys:["hrv_rmssd","resting_hr","subjective_recovery"],y:.36},
+  performance:{label:"表现",keys:["vo2max","running_ability"],y:.5},
+  sleep:{label:"睡眠",keys:["sleep_duration_min","sleep_efficiency","sleep_score"],y:.64},
+  load:{label:"负荷",keys:["training_load"],y:.83}
+};
+const METRIC={
+  hrv_rmssd:{label:"HRV",unit:"ms",pol:1,fam:"recovery"},
+  resting_hr:{label:"静息心率",unit:"bpm",pol:-1,fam:"recovery"},
+  subjective_recovery:{label:"主观恢复",unit:"/10",pol:1,fam:"recovery"},
+  sleep_duration_min:{label:"睡眠",unit:"min",pol:1,fam:"sleep"},
+  sleep_efficiency:{label:"睡眠效率",unit:"%",pol:1,fam:"sleep"},
+  sleep_score:{label:"睡眠分",unit:"",pol:1,fam:"sleep"},
+  training_load:{label:"训练负荷",unit:"a.u.",pol:0,fam:"load"},
+  stress:{label:"压力",unit:"",pol:-1,fam:"stress"},
+  vo2max:{label:"VO₂max",unit:"",pol:1,fam:"performance"},
+  running_ability:{label:"跑步能力",unit:"",pol:1,fam:"performance"}
+};
+const AXIS_FAM={recovery_autonomic:"recovery",sleep_circadian:"sleep",training_load_fatigue:"load",running_performance:"performance",health_stress:"stress"};
+const RED_FLAGS={chest_pain:"胸痛",palpitations:"心悸",fainting:"晕厥",joint_deformity:"关节畸形",cannot_bear_weight:"无法承重",severe_breathing_difficulty:"严重呼吸困难"};
+const TASK_LABEL={daily_guidance:"今日建议",post_workout:"训练后",weekly_review:"周复盘",pain_followup:"疼痛跟进"};
+const ACTION_LABEL={ask:"追问",maintain:"维持",reduce:"减量",rest:"休息",suggest_session:"建议课",protective_activity:"保护性活动",draft_plan:"计划草案",seek_professional_help:"就医咨询",seek_emergency_help:"立即就医"};
+const S={hist:null,snap:null,day:null,pinned:null,metric:"hrv_rmssd",jobs:new Map()};
+
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmtDate=d=>d?`${+d.slice(4,6)}月${+d.slice(6)}日`:"";
+const wk=d=>"日一二三四五六"[new Date(+d.slice(0,4),+d.slice(4,6)-1,+d.slice(6)).getDay()];
+const r1=v=>Math.round(v*10)/10;
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),2400)}
+async function api(path,opt){
+  const res=await fetch(path,opt&&{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(opt)});
+  const data=await res.json();if(!res.ok)throw new Error(data.error||res.statusText);return data;
+}
+
+/* ---------- personal baseline (prior 28 days, robust) ---------- */
+function stats(metric,day){
+  const rows=S.hist.daily.filter(r=>r.date<day&&r[metric]!=null).slice(-28).map(r=>+r[metric]).sort((a,b)=>a-b);
+  if(rows.length<5)return null;
+  const q=p=>rows[Math.min(rows.length-1,Math.max(0,Math.round(p*(rows.length-1))))];
+  const med=q(.5),iqr=Math.max(q(.75)-q(.25),Math.abs(med)*.03,1e-6);
+  return {med,q1:q(.25),q3:q(.75),scale:iqr/1.349,n:rows.length};
+}
+function zOf(metric,day,value){const st=stats(metric,day);if(!st||value==null)return null;return (value-st.med)/st.scale}
+function tone(metric,z){const p=METRIC[metric]?.pol??0;if(z==null||p===0)return "near";const o=p*z;return o>.6?"good":o<-.6?"strain":"near"}
+function row(day){return S.hist.daily.find(r=>r.date===day)||{date:day}}
+
+/* ---------- seeded noise ---------- */
+function rng(seed){let a=seed>>>0;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hash(s){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
+function noise1(seed){const R=rng(seed),g=Array.from({length:64},()=>R()*2-1);return x=>{const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return g[i&63]*(1-u)+g[(i+1)&63]*u}}
+function smoothPath(pts){
+  let d=`M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    d+=`C${(p1[0]+(p2[0]-p0[0])/6).toFixed(1)} ${(p1[1]+(p2[1]-p0[1])/6).toFixed(1)} ${(p2[0]-(p3[0]-p1[0])/6).toFixed(1)} ${(p2[1]-(p3[1]-p1[1])/6).toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+/* ---------- the generator: one day → one drawing ---------- */
+function famParams(fam,day){
+  const r=row(day),keys=FAM[fam].keys.filter(k=>r[k]!=null);
+  if(!keys.length)return {missing:true};
+  const zs=keys.map(k=>{const z=zOf(k,day,+r[k]);return z==null?0:(METRIC[k].pol||1)*z});
+  const z=zs.reduce((a,b)=>a+b,0)/zs.length,coh=1/(1+Math.exp(-1.6*z));
+  const p={missing:false,z,keys,coh};
+  if(fam==="load"){
+    const v=+r.training_load||0,acts=S.hist.activities.filter(a=>a.date===day);
+    const hi=acts.reduce((s,a)=>s+((a.hr_zone_minutes||[])[3]||0)+((a.hr_zone_minutes||[])[4]||0),0);
+    Object.assign(p,{amp:v>0?40+Math.min(v,160)*.6:14,count:v>0?7+Math.min(9,Math.round(v/15)):4,freq:1.2+hi/8,spread:v>0?5:3,drift:.05+Math.min(.5,hi/30),width:v>0?1.3:.7,knots:Math.min(7,Math.round(hi/3)),swell:v>0?.9:.3});
+  }else if(fam==="stress"){
+    Object.assign(p,{amp:16+Math.max(0,-z)*26,count:9,freq:3.2+Math.max(0,-z)*3,spread:4,drift:.08+(1-coh)*.35,width:.8,swell:.35});
+  }else if(fam==="performance"){
+    Object.assign(p,{amp:34,count:3,freq:.9,spread:3,drift:.02,width:1.1,swell:1,slope:-z*60});
+  }else if(fam==="sleep"){
+    const dur=+(r.sleep_duration_min||420);
+    Object.assign(p,{amp:52+Math.max(0,-z)*24,count:14,freq:.9+(1-coh)*1.1,spread:Math.max(3,Math.min(9,dur/60)),drift:.03+(1-coh)*.42,width:.9+coh*.5,swell:1});
+  }else{
+    Object.assign(p,{amp:64+Math.abs(z)*22,count:16,freq:.8+(1-coh)*1.6,spread:4.2,drift:.025+(1-coh)*.55,width:.9+coh*.6,swell:1.1});
+  }
+  return p;
+}
+function strands(fam,day,W,H,detail){
+  const p=famParams(fam,day),seed=hash(day+fam),N=noise1(seed),N2=noise1(seed^0x9e37),SW=noise1(seed^0x51ed),out=[];
+  const cy=FAM[fam].y*H,steps=detail?72:20;
+  if(p.missing){
+    const pts=[];for(let i=0;i<=steps;i++){const x=i/steps*W;pts.push([x,cy+N(i/steps*3)*10])}
+    out.push({d:smoothPath(pts),ghost:true,lead:true,w:1.4,pts});return {p,list:out};
+  }
+  const count=detail?p.count:Math.max(3,Math.round(p.count/3)),mid=(count-1)/2;
+  for(let s=0;s<count;s++){
+    const off=(s-mid)*p.spread*(detail?1:2.2),ph=s*p.drift,pts=[];
+    for(let i=0;i<=steps;i++){
+      const t=i/steps,x=-20+t*(W+40),env=.35+.65*Math.sin(Math.PI*t);
+      let y=cy+off+p.swell*p.amp*.7*SW(t*1.4)+p.amp*env*(N(t*p.freq*3+ph)*.8+N2(t*p.freq*7+ph*1.7)*.2);
+      if(p.slope)y+=p.slope*(t-.5);
+      pts.push([x,y]);
+    }
+    const lead=s===Math.round(mid),edge=1-Math.abs(s-mid)/(mid+1);
+    out.push({d:smoothPath(pts),pts,lead,w:(lead?p.width*2.4:p.width*(.5+edge*.7))*(detail?1:1),alpha:lead?1:.18+.55*edge});
+  }
+  if(detail&&count>2){const a=out[0].pts,b=out[out.length-1].pts;out.unshift({d:smoothPath(a)+"L"+smoothPath(b.slice().reverse()).slice(1)+"Z",ribbon:true})}
+  return {p,list:out};
+}
+function el(tag,attrs,parent){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);parent&&parent.appendChild(e);return e}
+
+function drawArt(day,animate=true){
+  const svg=$("#art");svg.innerHTML="";const W=1600,H=700;
+  const ghost=css("--art-ghost");
+  for(const fam of Object.keys(FAM)){
+    const g=el("g",{class:"fam","data-fam":fam},svg),col=css("--f-"+fam);
+    const {p,list}=strands(fam,day,W,H,true);
+    list.forEach((s,i)=>{
+      if(s.ribbon){el("path",{d:s.d,fill:col,"fill-opacity":.07,stroke:"none",class:"strand"},g);return}
+      const path=el("path",{d:s.d,class:"strand"+(s.lead?" lead":"")+(animate?" draw":""),stroke:s.ghost?ghost:col,"stroke-width":s.w,"stroke-opacity":s.ghost?1:s.alpha??1},g);
+      if(s.ghost)path.setAttribute("stroke-dasharray","6 10");
+      if(animate&&!s.ghost){const L=Math.ceil(path.getTotalLength());path.style.setProperty("--len",L);path.style.animationDelay=(Object.keys(FAM).indexOf(fam)*.12+i*.05)+"s"}
+    });
+    if(fam==="load"&&p.knots){const R=rng(hash(day+"knot")),lead=(list.find(x=>x.lead)||list[0]).pts;for(let k=0;k<p.knots;k++){const pt=lead[Math.floor(lead.length*(.2+.65*R()))];for(let j=0;j<2;j++)el("circle",{cx:pt[0],cy:pt[1],r:5+j*6+R()*3,fill:j?"none":col,"fill-opacity":.9,stroke:col,"stroke-width":1.2,"stroke-opacity":.6},g)}}
+    const hit=el("path",{d:(list.find(x=>x.lead)||list[0]).d,class:"hit"},g);
+    g.addEventListener("mousemove",e=>showTip(fam,day,e));
+    g.addEventListener("mouseleave",hideTip);
+    g.addEventListener("click",()=>{S.pinned=S.pinned===fam?null:fam;focusFam(S.pinned);provenance(fam,day)});
+  }
+  const ev=(S.hist.events||[]).filter(e=>e.date===day&&((e.pain||0)>0||(e.red_flags||[]).length||e.illness));
+  ev.forEach((e,i)=>{const cx=W*(.62+i*.06),cy=FAM.recovery.y*H;const g=el("g",{class:"fam","data-fam":"event"},svg);
+    for(let k=0;k<6;k++)el("circle",{cx:cx+Math.sin(k*1.7)*4,cy:cy+Math.cos(k*2.3)*4,r:10+k*6+(e.pain||0)*2,fill:"none",stroke:css("--alarm"),"stroke-width":2-k*.25,"stroke-opacity":1-k*.14},g);
+    el("circle",{cx,cy,r:4,fill:css("--alarm")},g);
+    g.addEventListener("mousemove",m=>tipHTML(`<b style="color:var(--alarm)">主观事件</b><br>疼痛 ${e.pain??"—"}${e.illness?" · 生病":""}${(e.red_flags||[]).map(f=>" · "+RED_FLAGS[f]).join("")}<br><code class="muted">/recent_events</code>`,m));g.addEventListener("mouseleave",hideTip)});
+  if(S.pinned)focusFam(S.pinned);
+  $("#legend").innerHTML=Object.keys(FAM).map(f=>`<span data-fam="${f}"><i style="background:var(--f-${f})"></i>${FAM[f].label}</span>`).join("");
+  $("#legend").querySelectorAll("span").forEach(sp=>{sp.onmouseenter=()=>focusFam(sp.dataset.fam);sp.onmouseleave=()=>focusFam(S.pinned)});
+}
+function thumb(day){
+  const svg=document.createElementNS(SVGNS,"svg");svg.setAttribute("viewBox","0 0 1600 700");
+  for(const fam of Object.keys(FAM)){const {list}=strands(fam,day,1600,700,false);list.filter(s=>!s.ribbon).forEach(s=>el("path",{d:s.d,fill:"none",stroke:s.ghost?css("--art-ghost"):css("--f-"+fam),"stroke-width":s.w*7,"stroke-opacity":s.ghost?.7:(s.alpha??1),"stroke-linecap":"round"},svg))}
+  return svg;
+}
+function focusFam(fam){const svg=$("#art");svg.classList.toggle("focusing",!!fam);svg.querySelectorAll(".fam").forEach(g=>g.classList.toggle("on",g.dataset.fam===fam));document.querySelectorAll(".chip,.ev").forEach(c=>c.classList.toggle("on",!!fam&&c.dataset.fam===fam))}
+
+/* ---------- provenance ---------- */
+function famLines(fam,day){
+  const r=row(day);
+  return FAM[fam].keys.map(k=>{const st=stats(k,day),v=r[k];if(v==null)return `<span class="muted">${METRIC[k].label}：这一天没有数据</span>`;
+    const d=st?v-st.med:null;return `${METRIC[k].label} <b class="num">${r1(v)}</b>${METRIC[k].unit?" "+METRIC[k].unit:""}${st?` <span class="muted num">· 常态 ${r1(st.med)}（${d>=0?"+":""}${r1(d)}）</span>`:""}`});
+}
+function tipHTML(html,e){const t=$("#tip"),box=$(".art-wrap").getBoundingClientRect();t.innerHTML=html;t.classList.add("show");
+  const x=Math.min(e.clientX-box.left+14,box.width-t.offsetWidth-8),y=Math.min(e.clientY-box.top+14,box.height-t.offsetHeight-8);t.style.left=x+"px";t.style.top=y+"px"}
+function showTip(fam,day,e){if(!S.pinned)focusFam(fam);tipHTML(`<b style="color:var(--f-${fam})">${FAM[fam].label}</b> · ${fmtDate(day)}<br>${famLines(fam,day).join("<br>")}`,e)}
+function hideTip(){$("#tip").classList.remove("show");if(!S.pinned)focusFam(null)}
+function provenance(fam,day){
+  const p=$("#prov");if(!S.pinned){p.innerHTML='<span class="muted">悬停任一笔触看它来自哪条数据；点击可固定。</span>';return}
+  const keys=FAM[fam].keys.filter(k=>row(day)[k]!=null);
+  p.innerHTML=`<b style="color:var(--f-${fam})">${FAM[fam].label}</b>　${famLines(fam,day).join("　")}　<code>来源：工作区 daily.json · ${day}${keys.length?" · "+keys.join(", "):""}</code>`;
+}
+
+/* ---------- headline & caption from the same numbers ---------- */
+function headline(day){
+  const rec=famParams("recovery",day),slp=famParams("sleep",day),load=famParams("load",day);
+  const gate=day===S.snap.week.as_of?S.snap.safety_gate.level:"green";
+  if(gate==="red")return ["今天先别练，红旗信号需要就医评估。","安全门由确定性规则判定，模型不能降级。"];
+  if(gate==="yellow")return ["今天以保护为主。","近 14 天有疼痛或生病记录，正常加量被安全门挡住。"];
+  const lines=[];
+  const r=rec.missing?null:rec.z,s=slp.missing?null:slp.z;
+  const head=r==null?"恢复数据缺席，先看你自己的感觉。":r>.8?"身体比你的常态松快。":r>.25?"身体比常态好一点。":r<-.8?"身体比常态紧绷不少。":r<-.25?"身体比常态紧一点。":"身体接近你的常态。";
+  if(s!=null)lines.push(s>.5?"睡眠舒展":s<-.5?"睡眠偏短":"睡眠如常");
+  const acts=S.hist.activities.filter(a=>a.date===day);
+  lines.push(acts.length?acts.map(a=>`${a.type} ${r1((a.distance_m||0)/1000)} km`).join("、"):"休息日");
+  if(!load.missing&&load.knots)lines.push(`高心率区 ${load.knots} 个结`);
+  return [head,lines.join(" · ")];
+}
+
+/* ---------- right rail: glance / focus / explore / axes ---------- */
+function drawRing(){
+  const svg=$("#ring");svg.innerHTML="";const ax=S.snap.state.axes.find(a=>a.id==="recovery_autonomic");
+  const v=ax&&ax.available?ax.index:null,R=48,C=2*Math.PI*R;
+  el("circle",{cx:60,cy:60,r:R,fill:"none",stroke:css("--line"),"stroke-width":10},svg);
+  el("line",{x1:60,y1:6,x2:60,y2:18,stroke:css("--ink-3"),"stroke-width":1},svg).setAttribute("transform","rotate(180 60 60)");
+  if(v!=null){const t=v>58?"--good":v<42?"--strain":"--near";
+    const arc=el("circle",{cx:60,cy:60,r:R,fill:"none",stroke:css(t),"stroke-width":10,"stroke-linecap":"round","stroke-dasharray":`${C*v/100} ${C}`,transform:"rotate(-90 60 60)"},svg);
+    const tx=el("text",{x:60,y:64,"text-anchor":"middle","font-size":26,fill:css("--ink"),style:"font-family:var(--serif)"},svg);tx.textContent=Math.round(v);
+    const sub=el("text",{x:60,y:82,"text-anchor":"middle","font-size":10,fill:css("--ink-3")},svg);sub.textContent="恢复 · 锚点 50";
+    const d=v-50;$("#glanceText").textContent=d>8?"明显好于你的常态":d>3?"比你的常态好一点":d<-8?"明显低于你的常态":d<-3?"比你的常态差一点":"接近你的常态";
+    $("#glanceSub").textContent=`本周至 ${fmtDate(S.snap.week.as_of)} · 可信度 ${Math.round((ax.reliability||0)*100)}%`;
+  }else{$("#glanceText").textContent="恢复轴数据不足";$("#glanceSub").textContent="需要至少 7 天基线和本周数据"}
+  const g=S.snap.safety_gate.level;$("#gate").innerHTML=`<span class="tag ${g}">安全门 ${({green:"绿",yellow:"黄",red:"红"})[g]}</span>`;
+}
+function drawChips(){
+  const box=$("#chips");box.innerHTML="";
+  for(const s of S.snap.raw_signals){
+    if(s.latest==null)continue;const m=METRIC[s.key]||{pol:0,fam:"recovery"};
+    const z=zOf(s.key,s.latest_date,s.latest),t=tone(s.key,z),d=s.delta_vs_baseline;
+    const b=document.createElement("button");b.className=`chip ${t}${S.metric===s.key?" sel":""}`;b.dataset.fam=m.fam;
+    b.innerHTML=`${esc(s.label)} <b class="num">${r1(s.latest)}</b><small class="num">${d==null?"无基线":(d>=0?"+":"")+r1(d)+" vs 常态"}</small>`;
+    b.onclick=()=>{S.metric=s.key;drawChips();drawSpark()};b.onmouseenter=()=>focusFam(m.fam);b.onmouseleave=()=>focusFam(S.pinned);
+    box.appendChild(b);
+  }
+}
+function drawSpark(){
+  const svg=$("#spark");svg.innerHTML="";const k=S.metric,m=METRIC[k]||{label:k,unit:""};
+  $("#exploreTitle").textContent=`探索 · ${m.label}`;
+  const rows=S.hist.daily.filter(r=>r[k]!=null);if(rows.length<2){el("text",{x:8,y:60,"font-size":12,fill:css("--ink-3")},svg).textContent="数据不足";return}
+  const W=316,H=104,vals=rows.map(r=>+r[k]),lo=Math.min(...vals),hi=Math.max(...vals),pad=(hi-lo)*.15||1;
+  const first=S.hist.daily[0].date,last=S.hist.daily[S.hist.daily.length-1].date;
+  const span=(new Date(last.slice(0,4),last.slice(4,6)-1,last.slice(6))-new Date(first.slice(0,4),first.slice(4,6)-1,first.slice(6)))/864e5||1;
+  const X=d=>((new Date(d.slice(0,4),d.slice(4,6)-1,d.slice(6))-new Date(first.slice(0,4),first.slice(4,6)-1,first.slice(6)))/864e5)/span*(W-8)+4;
+  const Y=v=>H-6-(v-lo+pad)/(hi-lo+2*pad)*(H-12);
+  const st=stats(k,S.day);
+  if(st)el("rect",{x:0,y:Y(st.q3),width:W,height:Math.max(1,Y(st.q1)-Y(st.q3)),fill:css("--line")},svg);
+  el("path",{d:rows.map((r,i)=>(i?"L":"M")+X(r.date).toFixed(1)+" "+Y(+r[k]).toFixed(1)).join(""),fill:"none",stroke:css("--ink"),"stroke-width":1.4},svg);
+  const cur=rows.find(r=>r.date===S.day);
+  el("line",{x1:X(S.day),x2:X(S.day),y1:0,y2:H,stroke:css("--f-"+(m.fam||"recovery")),"stroke-width":1,"stroke-dasharray":"2 3"},svg);
+  if(cur)el("circle",{cx:X(S.day),cy:Y(+cur[k]),r:4,fill:css("--f-"+(m.fam||"recovery"))},svg);
+  const lab=el("text",{x:4,y:H+14,"font-size":10,fill:css("--ink-3")},svg);lab.textContent=fmtDate(first);
+  const lab2=el("text",{x:W-4,y:H+14,"font-size":10,fill:css("--ink-3"),"text-anchor":"end"},svg);lab2.textContent=fmtDate(last);
+}
+function drawAxes(){
+  const box=$("#axes");box.innerHTML="";
+  for(const a of S.snap.state.axes){
+    const d=document.createElement("div"),fam=AXIS_FAM[a.id];d.className="axis"+(a.available?"":" off");d.dataset.fam=fam||"";
+    if(a.id==="data_confidence"){d.innerHTML=`<span>数据可信度</span><div class="bar" style="background:var(--line)"><i style="left:0;width:${a.index}%;background:var(--ink-3)"></i></div><span class="num muted">${Math.round(a.index)}</span>`;d.title=a.meaning||"";box.appendChild(d);continue}
+    if(!a.available){d.innerHTML=`<span>${esc(a.label)}</span><span class="small muted">数据不足或公开版暂无该信号</span><span></span>`;box.appendChild(d);continue}
+    const v=a.index,left=Math.min(v,50),w=Math.abs(v-50),col=v>=50?"var(--good)":"var(--strain)";
+    d.innerHTML=`<span>${esc(a.label)}</span><div class="bar"><i style="left:${left}%;width:${w}%;background:${col}"></i></div><span class="num">${Math.round(v)}</span>`;
+    d.onmouseenter=()=>fam&&focusFam(fam);d.onmouseleave=()=>focusFam(S.pinned);box.appendChild(d);
+  }
+}
+
+/* ---------- day selection ---------- */
+function selectDay(day,animate=true){
+  S.day=day;const [h,c]=headline(day);
+  $("#eyebrow").textContent=`${fmtDate(day)} · 周${wk(day)}${day===S.snap.week.as_of?" · 今天":""}`;
+  $("#dayTitle").textContent=h;$("#caption").textContent=c;
+  drawArt(day,animate);provenance(S.pinned,day);drawSpark();
+  document.querySelectorAll("#scrub button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.day===day));
+}
+function drawScrub(){
+  const box=$("#scrub");box.innerHTML="";const days=S.hist.daily.map(r=>r.date).slice(-14);
+  for(const d of days){const b=document.createElement("button");b.dataset.day=d;b.appendChild(thumb(d));const s=document.createElement("small");s.textContent=`${+d.slice(6)} 周${wk(d)}`;b.appendChild(s);b.onclick=()=>selectDay(d);box.appendChild(b)}
+  box.scrollLeft=box.scrollWidth;
+}
+
+/* ---------- coach thread ---------- */
+function resolvePtr(ctx,ptr){let cur=ctx;for(const raw of ptr.split("/").slice(1)){const k=raw.replace(/~1/g,"/").replace(/~0/g,"~");if(cur==null)return undefined;cur=Array.isArray(cur)?cur[+k]:cur[k]}return cur}
+function evMeta(ctx,ptr){
+  const p=ptr.split("/").slice(1);let fam=null,label=ptr,date=ctx.as_of;
+  if(p[0]==="views"&&p[1]==="raw_signals"){const it=ctx.views.raw_signals[+p[2]];if(it){fam=(METRIC[it.key]||{}).fam;label=it.label;date=it.latest_date||date}}
+  else if(p[0]==="views"&&p[1]==="recent_daily"){const r=ctx.views.recent_daily[+p[2]];fam=(METRIC[p[3]]||{}).fam;label=(METRIC[p[3]]||{label:p[3]}).label;date=r?r.date:date}
+  else if(p[0]==="views"&&p[1]==="state"){const a=(ctx.views.state.axes||[])[+p[3]];fam=a?AXIS_FAM[a.id]:null;label=a?a.label+"（实验）":"状态"}
+  else if(p[0]==="recent_events"){fam="event";label="你的打卡"}
+  else if(p[0]==="safety_gate"){fam="gate";label="安全门"}
+  else if(p[0]==="views"&&p[1]==="current_plan"){label="当前计划"}
+  return {fam,label,date};
+}
+function evChips(ctx,items){
+  return (items||[]).map(it=>{const m=evMeta(ctx,it.pointer||"");const v=it.observed_value;
+    const val=typeof v==="number"?r1(v):typeof v==="string"&&v.length>14?v.slice(0,12)+"…":v;
+    const color=m.fam&&FAM[m.fam]?`var(--f-${m.fam})`:m.fam==="event"||m.fam==="gate"?"var(--alarm)":"var(--ink-3)";
+    return `<span class="ev" data-fam="${m.fam||""}" data-date="${m.date||""}" title="${esc(it.pointer)} · ${esc(it.layer)}"><i style="background:${color}"></i>${esc(m.label)} ${val!==undefined?`<b class="num">${esc(val)}</b>`:""}</span>`}).join("");
+}
+function renderAnswer(ctx,resp){
+  let h="";
+  if(resp.observations?.length){h+="<h4>观察</h4>"+resp.observations.map(o=>`<p>${esc(o.statement)}${evChips(ctx,o.evidence)}</p>`).join("")}
+  if(resp.recommendations?.length){h+="<h4>建议</h4>"+resp.recommendations.map(o=>`<p><span class="act">${ACTION_LABEL[o.action_type]||esc(o.action_type)}</span>${esc(o.action)}${o.changes_plan?' <span class="tag yellow">待你确认</span>':""}${evChips(ctx,o.evidence)}</p>`).join("")}
+  if(resp.risks?.length){h+="<h4>风险</h4>"+resp.risks.map(o=>`<p><span class="tag ${esc(o.level)}">${esc(o.level)}</span> ${esc(o.signal)} → ${esc(o.action)}</p>`).join("")}
+  if(resp.questions?.length){h+="<h4>想问你</h4>"+resp.questions.map(q=>`<p>${esc(q)}</p>`).join("")}
+  if(resp.limitations?.length){h+=`<h4>局限</h4><p class="muted" style="font-size:14px">${resp.limitations.map(esc).join("；")}</p>`}
+  return h;
+}
+function wireEvidence(root){
+  root.querySelectorAll(".ev").forEach(c=>{
+    c.onmouseenter=()=>{if(c.dataset.fam&&FAM[c.dataset.fam])focusFam(c.dataset.fam)};
+    c.onmouseleave=()=>focusFam(S.pinned);
+    c.onclick=()=>{const d=c.dataset.date;if(d&&S.hist.daily.some(r=>r.date===d)&&d!==S.day)selectDay(d);if(FAM[c.dataset.fam]){S.pinned=c.dataset.fam;focusFam(S.pinned);provenance(S.pinned,S.day)}window.scrollTo({top:0,behavior:matchMedia("(prefers-reduced-motion:reduce)").matches?"auto":"smooth"})};
+  });
+}
+function jobCard(job){
+  let card=document.getElementById(job.job_id);
+  if(!card){card=document.createElement("div");card.className="job";card.id=job.job_id;$("#jobs").prepend(card)}
+  const ctx=job.context,g=ctx.safety_gate.level,done=!!job.response;
+  card.innerHTML=`<p class="q">${esc(job.query||"（无问题，按任务默认）")}</p>
+  <div class="meta"><span class="tag">${TASK_LABEL[job.task]||job.task}</span><span class="tag ${g}">安全门 ${({green:"绿",yellow:"黄",red:"红"})[g]}</span>${(job.skills||[]).map(s=>`<span class="tag">${esc(s)}</span>`).join("")}<span class="num">≈${ctx.context_metrics.approx_tokens} tokens</span><span>${esc(job.created_at||"")}</span></div>
+  ${done?"":`<div class="steps">
+    <div class="step done"><span class="n">1</span><div>作业已生成并签名，数据截至 ${fmtDate(ctx.as_of)}。</div></div>
+    <div class="step"><span class="n">2</span><div class="row"><button data-copy>复制提示词</button><span class="small muted">粘贴到任意 AI；或让接了 MCP 的 agent 直接提交 <code>${esc(job.job_id)}</code></span></div></div>
+    <div class="step"><span class="n">3</span><div><textarea rows="5" placeholder="把 AI 的回复整段贴进来（带不带 \`\`\`json 都行）"></textarea><div class="row" style="margin-top:6px"><button class="primary" data-submit>验证并展示</button></div><div data-err></div></div></div>
+  </div>`}
+  ${done?`<div class="answer">${renderAnswer(ctx,job.response)}</div><div class="receipt">✓ 已通过确定性验证 · 回复 ${esc((job.receipt?.response_sha256||"").slice(0,12))} · 上下文 ${esc((job.receipt?.context_sha256||"").slice(0,12))}</div>`:""}`;
+  if(!done){
+    card.querySelector("[data-copy]").onclick=async()=>{try{await navigator.clipboard.writeText(job.prompt);toast("提示词已复制")}catch{toast("复制失败，请手动选择")}};
+    card.querySelector("[data-submit]").onclick=async()=>{
+      const raw=card.querySelector("textarea").value.trim(),err=card.querySelector("[data-err]");if(!raw){err.innerHTML='<div class="errors">先贴入 AI 的回复。</div>';return}
+      try{const res=await api("/api/complete",{job_id:job.job_id,response:raw});
+        if(!res.valid){err.innerHTML=`<div class="errors">没有通过验证，未展示给你：<br>${res.errors.map(e=>`<code>${esc(e.path)}</code> ${esc(e.message)}`).join("<br>")}</div>`;return}
+        const full=await api("/api/job?id="+encodeURIComponent(job.job_id));jobCard(full);loadSuggs();toast(res.suggestions.length?`有 ${res.suggestions.length} 条改计划建议等你确认`:"已验证")}
+      catch(e){err.innerHTML=`<div class="errors">${esc(e.message)}</div>`}};
+  }
+  wireEvidence(card);S.jobs.set(job.job_id,done);
+}
+async function loadJobs(){
+  const {items}=await api("/api/jobs");
+  for(const j of items.slice(-8)){if(S.jobs.get(j.job_id)===j.completed)continue;if(S.jobs.has(j.job_id)&&!j.completed)continue;jobCard(await api("/api/job?id="+encodeURIComponent(j.job_id)))}
+}
+
+/* ---------- suggestions: the human seal ---------- */
+async function loadSuggs(){
+  const {items}=await api("/api/suggestions"),box=$("#suggs");
+  if(!items.length){box.innerHTML='<p class="small muted">暂无。改计划的建议只会出现在这里，只有你能盖章。</p>';return}
+  box.innerHTML="";
+  for(const s of items){const c=document.createElement("div");c.className="card sugg";
+    c.innerHTML=`<div class="serif">${esc(s.recommendation.action)}</div><div class="small muted" style="margin:4px 0 8px">${esc(s.key)} · 来自 ${esc(s.job_id)}</div>
+    <div class="row"><button class="primary" data-a>接受</button><button data-r>拒绝</button></div>
+    <div data-apply hidden class="form" style="margin-top:8px"><textarea rows="3" placeholder="写下新的计划全文"></textarea><label class="check"><input type="checkbox">我确认用这段文字替换当前计划</label><button data-go>应用到计划</button></div>`;
+    c.querySelector("[data-a]").onclick=async()=>{await api("/api/decide",{key:s.key,accept:true});c.querySelector("[data-apply]").hidden=false;c.querySelector("textarea").value=$("#plan").textContent;toast("已接受，可以改写计划了")};
+    c.querySelector("[data-r]").onclick=async()=>{await api("/api/decide",{key:s.key,accept:false});loadSuggs();toast("已拒绝并留痕")};
+    c.querySelector("[data-go]").onclick=async()=>{const ok=c.querySelector("[data-apply] input").checked;if(!ok){toast("需要勾选确认");return}
+      try{await api("/api/apply-plan",{key:s.key,text:c.querySelector("textarea").value,confirm:true});toast("计划已更新");loadPlan();loadSuggs()}catch(e){toast(e.message)}};
+    box.appendChild(c)}
+}
+async function loadPlan(){const p=await api("/api/plan");$("#plan").textContent=p.current_plan||"还没有计划。"}
+
+/* ---------- forms ---------- */
+function wireForms(){
+  const f=$("#checkin");f.date.value=new Date().toISOString().slice(0,10);
+  f.querySelectorAll("input[type=range]").forEach(r=>r.oninput=()=>f.querySelector(`[data-out="${r.name}"]`).textContent=r.value);
+  $("#flags").innerHTML=Object.entries(RED_FLAGS).map(([k,v])=>`<label class="check"><input type="checkbox" value="${k}">${v}</label>`).join("");
+  f.onsubmit=async e=>{e.preventDefault();const ev={type:f.type.value,date:f.date.value.replace(/-/g,""),subjective_recovery:+f.subjective_recovery.value,pain:+f.pain.value};
+    if(f.rpe.value!=="")ev.rpe=+f.rpe.value;if(f.illness.checked)ev.illness=true;if(f.note.value)ev.note=f.note.value;
+    const flags=[...f.querySelectorAll("#flags input:checked")].map(i=>i.value);if(flags.length)ev.red_flags=flags;
+    if(ev.type!=="morning_checkin"&&ev.type!=="weekly_checkin")delete ev.subjective_recovery;
+    try{await api("/api/checkin",ev);toast("已记下");f.note.value="";await refresh(false)}catch(err){toast(err.message)}};
+  const pf=$("#profile");api("/api/profile").then(p=>{pf.hr_max.value=p.hr_max??"";pf.hr_rest.value=p.hr_rest??"";pf.goal.value=p.goal??""});
+  pf.onsubmit=async e=>{e.preventDefault();const b={goal:pf.goal.value};if(pf.hr_max.value)b.hr_max=+pf.hr_max.value;if(pf.hr_rest.value)b.hr_rest=+pf.hr_rest.value;try{await api("/api/profile",b);toast("档案已保存")}catch(err){toast(err.message)}};
+  $("#askForm").onsubmit=async e=>{e.preventDefault();try{const job=await api("/api/ask",{query:$("#askInput").value.trim(),task:$("#askTask").value,as_of:S.snap.week.as_of});$("#askInput").value="";jobCard(job);
+    $("#"+CSS.escape(job.job_id)).scrollIntoView({behavior:"smooth",block:"start"})}catch(err){toast(err.message)}};
+  $("#evalBtn").onclick=async()=>{const r=await api("/api/eval");$("#evalOut").textContent=`${r.passed}/${r.total} 个固定场景通过${r.passed===r.total?"，硬门禁成立":""}`};
+  const drop=$("#drop"),file=$("#file");
+  const send=async files=>{for(const fl of files){$("#importLog").textContent=`导入 ${fl.name}…`;
+    const res=await fetch("/api/upload",{method:"POST",headers:{"X-Filename":encodeURIComponent(fl.name)},body:fl});const r=await res.json();
+    $("#importLog").textContent=res.ok?`${fl.name}：活动 +${r.activities} · 日指标 ${r.daily_changes} 项 · 睡眠段 +${r.sleep_intervals}${r.skipped?.length?" · 跳过："+r.skipped.map(s=>s.reason).join("；"):""}`:r.error}
+    await refresh(false)};
+  drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("over")});
+  drop.addEventListener("dragleave",()=>drop.classList.remove("over"));
+  drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("over");send(e.dataTransfer.files)});
+  file.onchange=()=>send(file.files);
+  $("#themeBtn").onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;r.dataset.theme=dark?"light":"dark";try{localStorage.setItem("theme",r.dataset.theme)}catch{}selectDay(S.day,false);drawScrub();drawRing();drawSpark()};
+}
+
+/* ---------- boot ---------- */
+async function refresh(animate=true){
+  [S.snap,S.hist]=await Promise.all([api("/api/snapshot"),api("/api/history")]);
+  const st=S.snap.status;$("#ws").textContent=`${st.days} 天 · ${st.activities} 次运动`;
+  if(!S.hist.daily.length){$("#dayTitle").textContent="还没有数据";$("#caption").innerHTML='把手表导出的文件拖到右侧「导入」，或 <button id="demoBtn">载入 8 周合成示例</button>';
+    $("#demoBtn").onclick=async()=>{await api("/api/demo",{});refresh()};return}
+  drawRing();drawChips();drawAxes();drawScrub();
+  selectDay(S.day&&S.hist.daily.some(r=>r.date===S.day)?S.day:S.snap.week.as_of,animate);
+  loadSuggs();loadPlan();
+}
+try{const t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch{}
+wireForms();
+refresh().then(loadJobs).catch(e=>{$("#dayTitle").textContent="连接本机服务失败";$("#caption").textContent=e.message});
+setInterval(()=>loadJobs().catch(()=>{}),8000);
+</script>
+</body>
+</html>

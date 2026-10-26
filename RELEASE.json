@@ -1,7 +1,7 @@
 {
   "name": "sports-eval-core",
-  "version": "0.2.0",
-  "released_on": "2026-08-12",
+  "version": "0.3.0",
+  "released_on": "2026-10-26",
   "runtime": "Python 3.9+ standard library",
   "data_policy": "synthetic_examples_only",
   "vendor_neutral": true,
@@ -12,6 +12,13 @@
     "change_candidates",
     "coach_context_v2",
     "deterministic_safety_gate",
-    "coach_response_v2_evidence_validation"
+    "coach_response_v2_evidence_validation",
+    "local_workspace",
+    "file_importers_fit_gpx_tcx_csv_apple_health",
+    "coach_events_skills_jobs_decisions_eval",
+    "cli_sec",
+    "mcp_server_stdio_http",
+    "agent_integrations",
+    "local_web_gui"
   ]
 }
