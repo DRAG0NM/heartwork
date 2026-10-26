@@ -40,7 +40,7 @@ class WebTest(unittest.TestCase):
 
     def test_page_and_snapshot(self):
         with urllib.request.urlopen(self.url + "/") as response:
-            self.assertIn("体征画", response.read().decode("utf-8"))
+            self.assertIn("健康画布", response.read().decode("utf-8"))
         snapshot = self.request("/api/snapshot")
         self.assertEqual(snapshot["safety_gate"]["level"], "green")
         self.assertGreater(len(self.request("/api/history")["daily"]), 40)

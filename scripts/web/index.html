@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sports Eval · 体征画</title>
+<title>Heartwork · 健康画布</title>
 <style>
 :root{
   --paper:#f4f1ea;--paper-2:#fbf9f4;--ink:#1f2326;--ink-2:#4d5257;--ink-3:#868b90;--line:#e2ddd2;--line-2:#d3ccbe;
@@ -164,7 +164,7 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
 </head>
 <body>
 <header>
-  <div class="mark">Sports Eval <b>·</b> 体征画</div>
+  <div class="mark">Heartwork <b>·</b> 健康画布</div>
   <div class="grow"></div>
   <span class="pill" id="ws"></span>
   <button class="ghost" id="themeBtn" aria-label="切换明暗">◐</button>
@@ -725,7 +725,7 @@ function buildPoster(){
     const act=S.hist.activities.filter(x=>x.date===d);
     if(act.length){const c=el("text",{x:0,y:205,"font-size":22,fill:css("--f-load"),"font-family":css("--sans")},g);c.textContent=act.map(x=>x.type).join(" ")}
   });
-  const f=el("text",{x:80,y:2310,"font-size":22,fill:css("--ink-3"),"font-family":css("--sans")},svg);f.textContent="Sports Eval Core · 由身体数据确定性生成，参照个人 28 日常态";
+  const f=el("text",{x:80,y:2310,"font-size":22,fill:css("--ink-3"),"font-family":css("--sans")},svg);f.textContent="Heartwork 健康画布 · 由身体数据确定性生成，以你本人的常态为基准";
   box.appendChild(svg);
 }
 function downloadPoster(){

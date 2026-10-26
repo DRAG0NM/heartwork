@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:sports-eval-core:schema:weekly-input:1",
-  "title": "Sports Eval Core vendor-neutral weekly input",
+  "title": "Heartwork vendor-neutral weekly input",
   "type": "object",
   "required": ["schema_version", "week"],
   "$defs": {

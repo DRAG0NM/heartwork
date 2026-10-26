@@ -5,7 +5,7 @@
 ```json
 {
   "mcpServers": {
-    "sports-eval": {
+    "heartwork": {
       "command": "python",
       "args": ["scripts/sec.py", "mcp"],
       "cwd": "<你的克隆路径>"
@@ -14,7 +14,7 @@
 }
 ```
 
-也可用命令：`gemini mcp add sports-eval python scripts/sec.py mcp`（在仓库根目录）。
+也可用命令：`gemini mcp add heartwork python scripts/sec.py mcp`（在仓库根目录）。
 
 上下文与技能：在目标项目根目录运行
 

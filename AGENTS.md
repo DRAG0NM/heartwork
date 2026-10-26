@@ -1,4 +1,4 @@
-# Sports Eval Core · AI 协作规则
+# Heartwork 健康画布 · AI 协作规则
 
 面向 Codex、DSH(DeepSeek Harness)、OpenCode、Gemini CLI 等读取 `AGENTS.md` 的 agent。个人数据全部在本机工作区（默认 `~/.sports-eval`，可用 `SPORTS_EVAL_HOME` 或 `--home` 指定），不在仓库里。
 

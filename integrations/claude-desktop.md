@@ -5,7 +5,7 @@
 ```json
 {
   "mcpServers": {
-    "sports-eval": {
+    "heartwork": {
       "command": "python",
       "args": ["scripts/sec.py", "mcp"],
       "cwd": "<你的克隆路径>"

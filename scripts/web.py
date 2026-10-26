@@ -206,7 +206,7 @@ def _parse_loose_json(text):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Sports Eval Core 本机网页")
+    parser = argparse.ArgumentParser(description="Heartwork 健康画布本机网页")
     parser.add_argument("--home")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
@@ -215,7 +215,7 @@ def main(argv=None):
     store.init(base)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(base))
     url = "http://127.0.0.1:%d/" % server.server_address[1]
-    print("Sports Eval Core 网页：%s（工作区 %s，Ctrl+C 退出）" % (url, store.home(base)), flush=True)
+    print("Heartwork 网页：%s（工作区 %s，Ctrl+C 退出）" % (url, store.home(base)), flush=True)
     if not args.no_browser:
         threading.Timer(0.6, webbrowser.open, (url,)).start()
     try:

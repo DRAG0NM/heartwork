@@ -3,7 +3,7 @@
 在仓库（或你的项目）根目录运行：
 
 ```
-claude mcp add sports-eval -- python scripts/sec.py mcp
+claude mcp add heartwork -- python scripts/sec.py mcp
 ```
 
 或在项目 `.mcp.json` 中写：
@@ -11,7 +11,7 @@ claude mcp add sports-eval -- python scripts/sec.py mcp
 ```json
 {
   "mcpServers": {
-    "sports-eval": { "command": "python", "args": ["scripts/sec.py", "mcp"] }
+    "heartwork": { "command": "python", "args": ["scripts/sec.py", "mcp"] }
   }
 }
 ```
