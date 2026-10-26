@@ -1,6 +1,6 @@
 {
   "name": "sports-eval-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "released_on": "2026-10-26",
   "runtime": "Python 3.9+ standard library",
   "data_policy": "synthetic_examples_only",
@@ -19,6 +19,12 @@
     "cli_sec",
     "mcp_server_stdio_http",
     "agent_integrations",
-    "local_web_gui"
+    "local_web_gui",
+    "rolling_mad_baseline_lnrmssd_swc",
+    "banister_load_srpe",
+    "coach_autonomy_levels",
+    "claim_direction_check",
+    "file_provenance",
+    "weekly_poster"
   ]
 }

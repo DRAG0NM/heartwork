@@ -7,7 +7,11 @@ import copy
 import json
 import os
 import sys
+import tempfile
+from datetime import datetime, timedelta
 
+import coach_decisions
+import store
 from coach_core import build_context, resolve_pointer, validate_response
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -48,6 +52,28 @@ def _response(context, action="maintain", level="green", evidence=None, **overri
     return response
 
 
+def _claim_case(context):
+    """A raw-signal card whose metric has a non-within baseline status, plus the matching words."""
+    cards = {card["key"]: index for index, card in enumerate(context["views"]["raw_signals"])}
+    for item in context["views"]["baseline_status"]:
+        if item["status"] != "within" and item["key"] in cards:
+            return item, _evidence(context, "/views/raw_signals/%d/latest" % cards[item["key"]])
+    raise RuntimeError("synthetic data has no off-baseline metric")
+
+
+def _claim_response(context, statement, claims):
+    response = _response(context)
+    response["observations"][0].update(statement=statement, claims=claims)
+    return response
+
+
+def _plan_response(context, action="reduce", level="green", **rec):
+    response = _response(context, action, level)
+    response["recommendations"][0].update(
+        changes_plan=True, requires_confirmation=False, plan_text="合成新计划", confidence="medium", **rec)
+    return response
+
+
 def _cases():
     base = _payload()
     daily = build_context(base, "daily_guidance")
@@ -84,17 +110,74 @@ def _cases():
     tampered = copy.deepcopy(daily)
     tampered["query"] = "被改过的问题"
     cases.append(("context_hash_changed", tampered, _response(daily), False, ["context_hash"]))
+
+    item, evidence = _claim_case(daily)
+    up = item["status"] == "above"
+    right, wrong = ("above", "below") if up else ("below", "above")
+    word, opposite = ("升高", "下降") if up else ("下降", "升高")
+    cases.append(("claim_direction_reversed", daily, _claim_response(
+        daily, "%s%s" % (item["label"], word), [{"metric": item["key"], "direction": wrong}]),
+        False, ["claim_mismatch"]))
+    cases.append(("direction_words_without_claims", daily, _claim_response(
+        daily, "%s%s" % (item["label"], word), None), False, ["claim_required"]))
+    cases.append(("claim_text_conflict", daily, _claim_response(
+        daily, "%s%s" % (item["label"], opposite), [{"metric": item["key"], "direction": right}]),
+        False, ["claim_text_conflict"]))
+    cases.append(("claims_consistent", daily, _claim_response(
+        daily, "%s%s" % (item["label"], word), [{"metric": item["key"], "direction": right}]),
+        True, []))
+
+    conservative = build_context(base, "weekly_review", level="conservative")
+    plan = _response(conservative, "reduce")
+    plan["recommendations"][0].update(changes_plan=True, requires_confirmation=True)
+    cases.append(("conservative_plan_change_rejected", conservative, plan, False, ["permission"]))
+
+    conservative_daily = build_context(base, "daily_guidance", level="conservative")
+    state_ev = [_evidence(conservative_daily), _evidence(
+        conservative_daily, "/views/state/axes/0/index", "experimental_model")]
+    cases.append(("conservative_experimental_rejected", conservative_daily,
+                  _response(conservative_daily, "reduce", evidence=state_ev), False,
+                  ["experimental_evidence"]))
+
+    auto_yellow = build_context(_with_event(base, pain=4), "daily_guidance", level="autonomous")
+    cases.append(("autonomous_yellow_auto_apply_blocked", auto_yellow,
+                  _plan_response(auto_yellow, "reduce", "yellow"), True, [], ["safety_gate_not_green"]))
+
+    auto_green = build_context(base, "daily_guidance", level="autonomous")
+    cases.append(("autonomous_rate_limited", auto_green, _plan_response(auto_green, "reduce"),
+                  True, [], ["rate_limited"], True))
+
+    auto_state = [_evidence(auto_green, "/views/state/axes/0/index", "experimental_model")]
+    cases.append(("autonomous_experimental_only_increase_rejected", auto_green,
+                  _response(auto_green, "suggest_session", evidence=auto_state), False,
+                  ["experimental_only"]))
     return cases
+
+
+def _blockers(context, response, seeded):
+    recommendation = response["recommendations"][0]
+    with tempfile.TemporaryDirectory() as tmp:
+        store.init(tmp)
+        if seeded:
+            first = coach_decisions.register(tmp, "job_eval", "eval", {"id": "seed"})
+            coach_decisions.auto_apply(tmp, first["key"], "合成旧计划",
+                                       now=datetime.now() - timedelta(hours=10))
+        return coach_decisions.auto_blockers(tmp, context, recommendation)
 
 
 def run_eval():
     results = []
-    for name, context, response, expect_valid, expect_codes in _cases():
+    for name, context, response, expect_valid, expect_codes, *extra in _cases():
         outcome = validate_response(response, context)
         codes = sorted({item["code"] for item in outcome["errors"]})
         ok = outcome["valid"] == expect_valid and set(expect_codes) <= set(codes)
-        results.append({"name": name, "passed": ok, "expected_valid": expect_valid,
-                        "expected_codes": expect_codes, "valid": outcome["valid"], "codes": codes})
+        row = {"name": name, "passed": ok, "expected_valid": expect_valid,
+               "expected_codes": expect_codes, "valid": outcome["valid"], "codes": codes}
+        if extra:
+            blockers = _blockers(context, response, len(extra) > 1)
+            row.update(expected_blockers=extra[0], blockers=blockers)
+            row["passed"] = ok and set(extra[0]) <= set(blockers)
+        results.append(row)
     passed = sum(1 for item in results if item["passed"])
     return {"passed": passed, "total": len(results), "cases": results}
 

@@ -7,8 +7,11 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timedelta
 
+import baseline
+import coach_policy
 from state_layers import multidomain_state, raw_signal_snapshot
 
 
@@ -22,8 +25,8 @@ TASK_ACTIONS = {
     "pain_followup": {"ask", "rest", "protective_activity", "seek_professional_help",
                       "seek_emergency_help"},
 }
-TOKEN_BUDGETS = {"daily_guidance": 3500, "post_workout": 3500,
-                 "weekly_review": 5000, "pain_followup": 3000}
+TOKEN_BUDGETS = {"daily_guidance": 4000, "post_workout": 4000,
+                 "weekly_review": 6000, "pain_followup": 3500}
 RED_FLAGS = {"chest_pain", "palpitations", "fainting", "joint_deformity",
              "cannot_bear_weight", "severe_breathing_difficulty"}
 LEVEL = {"green": 0, "yellow": 1, "red": 2}
@@ -74,16 +77,26 @@ def safety_gate(events, as_of):
             "required_action_types": []}
 
 
-def build_context(payload, task, query=""):
+BASELINE_FIELDS = ("key", "label", "unit", "recent_mean", "center", "band", "swc", "z",
+                   "status", "oriented", "n_recent", "n_baseline")
+
+
+def _baseline_status(daily, as_of):
+    return [{key: item[key] for key in BASELINE_FIELDS}
+            for item in baseline.day_status(daily, as_of).values()]
+
+
+def build_context(payload, task, query="", level=None):
     if task not in TASK_ACTIONS:
         raise ValueError("unknown task: %s" % task)
+    level = level or coach_policy.DEFAULT_LEVEL
     week = payload.get("week") or {}
     mon = _compact_date(week["mon"])
     as_of = _compact_date(week["as_of"])
     daily = list(payload.get("history_daily") or []) + list(payload.get("daily") or [])
     daily = sorted(daily, key=lambda row: row.get("date", ""))
     events = _recent_events(payload.get("subjective_events") or [], as_of)
-    state = multidomain_state(daily, mon, as_of)
+    state = multidomain_state(daily, mon, as_of, payload.get("load_history"))
     if task != "weekly_review":
         state = {
             "kind": state["kind"], "schema_version": state["schema_version"],
@@ -98,12 +111,11 @@ def build_context(payload, task, query=""):
     context = {
         "kind": "coach_context", "schema_version": 2, "task": task, "as_of": as_of,
         "query": query,
-        "policy": {"allowed_action_types": sorted(TASK_ACTIONS[task]),
-                   "medical_diagnosis": "forbidden", "plan_change_requires_confirmation": True,
-                   "experimental_only_prescription": "forbidden"},
+        "policy": coach_policy.rules(level, task),
         "views": {
             "raw_signals": raw_signal_snapshot(daily, mon, as_of),
             "state": state,
+            "baseline_status": _baseline_status(daily, as_of),
             "recent_daily": daily[-recent_days:],
             "activities": payload.get("activities") or [],
             "current_plan": payload.get("current_plan"),
@@ -160,6 +172,8 @@ def _expected_layer(pointer):
         return "deterministic_metric"
     if pointer.startswith("/views/current_plan"):
         return "plan"
+    if pointer.startswith("/views/baseline_status"):
+        return "deterministic_metric"
     return None
 
 
@@ -193,6 +207,101 @@ def _evidence_errors(item, path, context, require_value):
     return errors
 
 
+DIRECTION_WORDS = (
+    ("up", re.compile(r"偏高|升高|上升|高于|增加|\b(?:higher|increas\w*|above)\b", re.I)),
+    ("down", re.compile(r"偏低|降低|下降|低于|减少|\b(?:lower|decreas\w*|below|declin\w*)\b", re.I)),
+    ("better", re.compile(r"改善|变好|\bimprov\w*", re.I)),
+    ("worse", re.compile(r"变差|恶化|\bworse\w*", re.I)),
+    ("within", re.compile(r"正常范围|接近常态|持平|\b(?:within|normal)\b", re.I)),
+)
+NEGATIONS = ("不", "没", "无", "未", "非", "not ", "no ")
+DIRECTIONS = ("above", "below", "within")
+
+
+def _statement_classes(text):
+    found = set()
+    for name, pattern in DIRECTION_WORDS:
+        for match in pattern.finditer(text):
+            if not any(mark in text[max(0, match.start() - 4):match.start()].lower()
+                       for mark in NEGATIONS):
+                found.add(name)
+                break
+    return found
+
+
+def _evidence_metrics(context, evidence, known):
+    keys = set()
+    for item in evidence:
+        parts = str(item.get("pointer", "")).split("/") if isinstance(item, dict) else []
+        if len(parts) < 5 or parts[1] != "views":
+            continue
+        try:
+            if parts[2] in ("raw_signals", "baseline_status"):
+                key = resolve_pointer(context, "/".join(parts[:4]))["key"]
+            elif parts[2] == "recent_daily":
+                key = parts[4]
+            else:
+                continue
+        except (KeyError, IndexError, ValueError, TypeError):
+            continue
+        if key in known:
+            keys.add(key)
+    return keys
+
+
+def _claim_consistent(name, claim, polarity):
+    direction = claim["direction"]
+    if name == "up":
+        return direction == "above"
+    if name == "down":
+        return direction == "below"
+    if name == "within":
+        return direction == "within"
+    if direction == "within" or not polarity:
+        return False
+    improved = (direction == "above") == (polarity > 0)
+    return improved if name == "better" else not improved
+
+
+def _claim_errors(observation, path, context):
+    errors = []
+    status = {item.get("key"): item.get("status") for item in
+              (context.get("views") or {}).get("baseline_status") or [] if isinstance(item, dict)}
+    claims = observation.get("claims")
+    if claims is not None and not isinstance(claims, list):
+        return [{"code": "claim_mismatch", "path": path + ".claims", "message": "claims must be a list"}]
+    valid = []
+    for index, claim in enumerate(claims or []):
+        where = "%s.claims[%d]" % (path, index)
+        if not isinstance(claim, dict) or claim.get("direction") not in DIRECTIONS:
+            errors.append({"code": "claim_mismatch", "path": where,
+                           "message": "claim needs metric and direction above/below/within"})
+        elif claim.get("metric") not in status:
+            errors.append({"code": "claim_mismatch", "path": where + ".metric",
+                           "message": "metric is not in views.baseline_status"})
+        elif claim["direction"] != status[claim["metric"]]:
+            errors.append({"code": "claim_mismatch", "path": where + ".direction",
+                           "message": "baseline_status says %s for %s" %
+                                      (status[claim["metric"]], claim["metric"])})
+        else:
+            valid.append(claim)
+    classes = _statement_classes(str(observation.get("statement") or ""))
+    if not classes or errors:
+        return errors
+    evidence = observation.get("evidence") if isinstance(observation.get("evidence"), list) else []
+    if not claims:
+        if _evidence_metrics(context, evidence, set(status)):
+            errors.append({"code": "claim_required", "path": path,
+                           "message": "statement states a direction; add claims for the metric"})
+        return errors
+    for name in sorted(classes):
+        if not any(_claim_consistent(name, claim, baseline.METRICS.get(claim["metric"], {})
+                                     .get("polarity", 0)) for claim in valid):
+            errors.append({"code": "claim_text_conflict", "path": path + ".statement",
+                           "message": "statement direction (%s) contradicts claims" % name})
+    return errors
+
+
 def validate_response(response, context):
     errors = []
     unsigned_context = {key: value for key, value in context.items()
@@ -217,20 +326,41 @@ def validate_response(response, context):
         for evidence_index, item in enumerate(evidence):
             errors.extend(_evidence_errors(item, "$.observations[%d].evidence[%d]" %
                                            (index, evidence_index), context, True))
+        errors.extend(_claim_errors(observation, "$.observations[%d]" % index, context))
         if observation.get("confidence") == "high" and "experimental_model" in layers:
             errors.append({"code": "experimental_confidence",
                            "path": "$.observations[%d].confidence" % index,
                            "message": "experimental evidence cannot be high confidence"})
-    allowed = TASK_ACTIONS.get(context.get("task"), set())
+    policy = context.get("policy") or {}
+    rule = coach_policy.rules(policy.get("level") if policy.get("level") in coach_policy.LEVELS
+                              else coach_policy.DEFAULT_LEVEL)
+    allowed = set(policy.get("allowed_action_types") or TASK_ACTIONS.get(context.get("task"), set()))
+    cap = coach_policy.CONFIDENCE_RANK[rule["max_recommendation_confidence"]]
     for index, recommendation in enumerate(recommendations):
         path = "$.recommendations[%d]" % index
-        action = recommendation.get("action_type") if isinstance(recommendation, dict) else None
+        if not isinstance(recommendation, dict):
+            errors.append({"code": "evidence", "path": path, "message": "recommendation must be an object"})
+            continue
+        action = recommendation.get("action_type")
         if action not in allowed:
             errors.append({"code": "permission", "path": path + ".action_type",
-                           "message": "action is not allowed for this task"})
-        if recommendation.get("changes_plan") and not recommendation.get("requires_confirmation"):
-            errors.append({"code": "confirmation", "path": path,
-                           "message": "plan changes require confirmation"})
+                           "message": "action is not allowed for this task and autonomy level"})
+        if recommendation.get("changes_plan"):
+            if rule["plan_change"] == "forbidden":
+                errors.append({"code": "permission", "path": path + ".changes_plan",
+                               "message": "conservative level forbids plan-change suggestions"})
+            elif not recommendation.get("requires_confirmation"):
+                text = recommendation.get("plan_text")
+                if rule["plan_change"] != "auto_if_guardrails":
+                    errors.append({"code": "confirmation", "path": path,
+                                   "message": "plan changes require confirmation"})
+                elif not isinstance(text, str) or not text.strip() or len(text) > coach_policy.PLAN_TEXT_LIMIT:
+                    errors.append({"code": "plan_text", "path": path + ".plan_text",
+                                   "message": "unconfirmed plan change needs plan_text (max %d chars)" %
+                                              coach_policy.PLAN_TEXT_LIMIT})
+        if coach_policy.CONFIDENCE_RANK.get(recommendation.get("confidence"), 0) > cap:
+            errors.append({"code": "confidence_cap", "path": path + ".confidence",
+                           "message": "confidence exceeds the cap of this autonomy level"})
         evidence = recommendation.get("evidence") or []
         if not evidence:
             errors.append({"code": "evidence", "path": path, "message": "recommendation needs evidence"})
@@ -238,6 +368,12 @@ def validate_response(response, context):
         for evidence_index, item in enumerate(evidence):
             errors.extend(_evidence_errors(item, path + ".evidence[%d]" % evidence_index,
                                            context, False))
+        if rule["raw_signal_required"] == "always" and "raw_signal" not in layers:
+            errors.append({"code": "raw_signal_required", "path": path,
+                           "message": "this autonomy level requires raw_signal evidence"})
+        if rule["experimental_evidence"] == "forbidden" and "experimental_model" in layers:
+            errors.append({"code": "experimental_evidence", "path": path,
+                           "message": "this autonomy level forbids experimental-layer evidence"})
         if layers and layers <= {"experimental_model"} and action not in {"ask", "maintain"}:
             errors.append({"code": "experimental_only", "path": path,
                            "message": "experimental-only evidence cannot prescribe"})

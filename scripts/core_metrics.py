@@ -76,7 +76,11 @@ def _load_window(loads_by_date: Mapping[str, float], as_of: Union[str, date], da
 
 
 def acwr(loads_by_date: Mapping[str, float], as_of: Union[str, date]):
-    """Experimental 7/28-day mean-load ratio, excluding the incomplete as_of day."""
+    """Experimental 7/28-day mean-load ratio, excluding the incomplete as_of day.
+
+    Coupled (the acute week is part of the chronic window); no longer recommended,
+    use acwr_uncoupled.
+    """
     sequence = _load_window(loads_by_date, as_of)
     if sequence is None:
         return None
@@ -104,7 +108,10 @@ def _ewma(values: Sequence[float], smoothing: float):
 
 def ewma_acwr(loads_by_date: Mapping[str, float], as_of: Union[str, date],
               acute_lambda: float = 0.25, chronic_lambda: float = 2.0 / 29.0):
-    """Experimental dual-time-constant EWMA ratio over the same 28-day sequence."""
+    """Experimental dual-time-constant EWMA ratio over the same 28-day sequence.
+
+    Coupled (acute and chronic share data); no longer recommended, use banister.
+    """
     sequence = _load_window(loads_by_date, as_of)
     if sequence is None:
         return None
@@ -120,6 +127,56 @@ def ewma_acwr(loads_by_date: Mapping[str, float], as_of: Union[str, date],
         "chronic_lambda": round(chronic_lambda, 3),
         "experimental": True,
     }
+
+
+def acwr_uncoupled(loads_by_date: Mapping[str, float], as_of: Union[str, date]):
+    """Acute = mean of the last 7 days (incl. as_of); chronic = mean of days 8-35, no overlap."""
+    horizon = _day(as_of)
+    parsed = {_day(key): float(value) for key, value in loads_by_date.items() if value is not None}
+    if not parsed or min(parsed) > horizon - timedelta(days=21):
+        return None
+    acute = [parsed.get(horizon - timedelta(days=offset), 0.0) for offset in range(7)]
+    chronic = [parsed.get(horizon - timedelta(days=offset), 0.0) for offset in range(7, 35)]
+    chronic_mean = _mean(chronic)
+    if not chronic_mean:
+        return None
+    return {"ratio": round(_mean(acute) / chronic_mean, 2),
+            "acute_mean": round(_mean(acute), 2), "chronic_mean": round(chronic_mean, 2),
+            "experimental": True}
+
+
+def banister_series(loads_by_date: Mapping[str, float], as_of: Union[str, date],
+                    atl_days: int = 7, ctl_days: int = 42):
+    """Daily (date, atl, ctl, tsb) from the first load day to as_of; EWMA seeded at 0.
+
+    Coefficient 1-exp(-1/tau); days without a load count as 0; tsb = ctl - atl.
+    """
+    horizon = _day(as_of)
+    parsed = {_day(key): float(value) for key, value in loads_by_date.items()
+              if value is not None and _day(key) <= horizon}
+    if not parsed:
+        return []
+    k_atl, k_ctl = 1 - math.exp(-1.0 / atl_days), 1 - math.exp(-1.0 / ctl_days)
+    atl = ctl = 0.0
+    series = []
+    day = min(parsed)
+    while day <= horizon:
+        load = parsed.get(day, 0.0)
+        atl += k_atl * (load - atl)
+        ctl += k_ctl * (load - ctl)
+        series.append((day.strftime("%Y%m%d"), atl, ctl, ctl - atl))
+        day += timedelta(days=1)
+    return series
+
+
+def banister(loads_by_date: Mapping[str, float], as_of: Union[str, date],
+             atl_days: int = 7, ctl_days: int = 42):
+    """Banister impulse-response: fatigue (atl), fitness (ctl) and form (tsb)."""
+    series = banister_series(loads_by_date, as_of, atl_days, ctl_days)
+    if not series:
+        return None
+    _, atl, ctl, tsb = series[-1]
+    return {"atl": round(atl, 2), "ctl": round(ctl, 2), "tsb": round(tsb, 2)}
 
 
 def _iso_datetime(value: str):

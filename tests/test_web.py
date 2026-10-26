@@ -64,6 +64,13 @@ class WebTest(unittest.TestCase):
         result = self.request("/api/upload", csv, {"X-Filename": "daily.csv"})
         self.assertEqual(result["daily_changes"], 2)
         self.assertTrue(os.path.exists(os.path.join(self.base, "inbox", "daily.csv")))
+        view = self.request("/api/provenance?date=20260812&metric=hrv_rmssd")
+        self.assertEqual(view["metrics"]["hrv_rmssd"]["file"]["name"], "daily.csv")
+        demo = self.request("/api/provenance?date=20260810")
+        self.assertTrue(all(item["file"] is None for item in demo["metrics"].values()))
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.request("/api/provenance")
+        self.assertEqual(caught.exception.code, 400)
 
 
 if __name__ == "__main__":

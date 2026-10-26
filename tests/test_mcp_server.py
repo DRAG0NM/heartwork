@@ -61,10 +61,17 @@ class McpServerTest(unittest.TestCase):
                 names = {tool["name"] for tool in tools}
                 self.assertEqual(names, {"status", "import_files", "log_event", "weekly_report",
                                          "start_coach_job", "submit_coach_response",
-                                         "list_pending_suggestions", "run_eval", "get_profile"})
+                                         "list_pending_suggestions", "run_eval", "get_profile",
+                                         "get_autonomy"})
                 self.assertTrue(all(tool["inputSchema"]["type"] == "object" for tool in tools))
                 self.assertNotIn("decide", names)
                 self.assertNotIn("apply_plan", names)
+                for hidden in ("set_autonomy", "undo"):
+                    self.assertNotIn(hidden, names)
+                self.assertEqual(client.tool("get_autonomy")["structuredContent"]["level"], "balanced")
+                refused = client.send("tools/call", {"name": "set_autonomy",
+                                                     "arguments": {"level": "autonomous", "confirm": True}})
+                self.assertIn("error", refused)
 
                 status = client.tool("status")
                 self.assertFalse(status["isError"])

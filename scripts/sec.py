@@ -93,6 +93,11 @@ def build_parser():
     source.add_argument("--file")
     source.add_argument("--text")
     apply.add_argument("--confirm", action="store_true")
+    autonomy = commands.add_parser("autonomy", help="查看或设置教练权限档位")
+    autonomy.add_argument("level", nargs="?", choices=["conservative", "balanced", "autonomous"])
+    autonomy.add_argument("--confirm", action="store_true", help="升到 autonomous 时必须带上")
+    undo = commands.add_parser("undo", help="撤销教练自动应用的计划（仅人，7 天内）")
+    undo.add_argument("key")
     commands.add_parser("eval", help="运行固定回放评测")
     install = commands.add_parser("install-skills", help="把教练技能复制进项目目录")
     install.add_argument("--target", required=True, choices=sorted(SKILL_TARGETS))
@@ -142,8 +147,12 @@ def run(args):
         result = api.complete_job(home, args.job_id, _read_json_file(args.response))
         if result["valid"]:
             print(result["markdown"])
-            if result["suggestions"]:
-                print("待决建议：%s" % ", ".join(item["key"] for item in result["suggestions"]))
+            pending = [item["key"] for item in result["suggestions"] if item["status"] == "pending"]
+            if pending:
+                print("待决建议：%s" % ", ".join(pending))
+            for item in result["auto_applied"]:
+                print("已自动应用计划 %s，可在 %s 前用 sec undo %s 撤销" % (
+                    item["key"], item["undo_until"], item["key"]))
             return 0
         _print(result["errors"])
         return 1
@@ -155,6 +164,11 @@ def run(args):
         text = args.text if args.text is not None else open(
             args.file, encoding="utf-8").read()
         return _print(api.apply_plan(home, args.key, text, args.confirm))
+    if command == "autonomy":
+        return _print(api.set_autonomy(home, args.level, args.confirm) if args.level
+                      else api.get_autonomy(home))
+    if command == "undo":
+        return _print(api.undo(home, args.key))
     if command == "eval":
         result = api.run_eval()
         _print(result)

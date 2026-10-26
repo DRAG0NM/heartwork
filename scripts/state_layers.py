@@ -11,6 +11,9 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta
 
+import baseline
+from core_metrics import acwr_uncoupled, banister_series
+
 
 SIGNALS = (
     {"key": "sleep_duration_min", "label": "睡眠时长", "unit": "min",
@@ -49,26 +52,7 @@ def _day(value):
     return datetime.strptime(value.replace("-", ""), "%Y%m%d")
 
 
-def _median(values):
-    values = sorted(values)
-    if not values:
-        return None
-    middle = len(values) // 2
-    return values[middle] if len(values) % 2 else (values[middle - 1] + values[middle]) / 2.0
-
-
-def _sample_sd(values):
-    if len(values) < 2:
-        return 0.0
-    mean = sum(values) / len(values)
-    return math.sqrt(sum((value - mean) ** 2 for value in values) / (len(values) - 1))
-
-
-def _scale(values, center=None):
-    center = _median(values) if center is None else center
-    deviations = [abs(value - center) for value in values]
-    mad = _median(deviations) or 0.0
-    return max(1.4826 * mad, _sample_sd(values), abs(center or 0.0) * 0.05, 1e-6)
+_median = baseline.median
 
 
 def _score(z):
@@ -112,41 +96,75 @@ def raw_signal_snapshot(daily, mon, as_of, baseline_days=28):
     return cards
 
 
-def _axis_state(daily, axis_id, label, mon, as_of, baseline_days=42):
-    mon_day = _day(mon)
-    start = (mon_day - timedelta(days=baseline_days)).strftime("%Y%m%d")
-    elapsed = max(1, (_day(as_of) - mon_day).days + 1)
-    components = {}
-    weighted = []
-    weights = []
+def _axis_state(daily, axis_id, label, mon, as_of, baseline_days=42, load_history=None):
+    if axis_id == "training_load_fatigue":
+        return _load_axis(daily, label, as_of, load_history)
+    rows = baseline.index_rows(daily)
+    components, weighted, weights = {}, [], []
     for spec in (item for item in SIGNALS if item["axis"] == axis_id):
-        baseline = [float(row[spec["key"]]) for _, row in _records(daily)
-                    if start <= row["date"] < mon and _finite(row.get(spec["key"]))]
-        current = [float(row[spec["key"]]) for _, row in _records(daily)
-                   if mon <= row["date"] <= as_of and _finite(row.get(spec["key"]))]
-        if len(baseline) < 7 or not current:
+        status = baseline.metric_status(None, spec["key"], as_of, _rows=rows)
+        if status is None:
             continue
-        center = _median(baseline)
-        current_mean = sum(current) / len(current)
-        oriented_z = spec["polarity"] * (current_mean - center) / _scale(baseline, center)
-        reliability = min(1.0, len(baseline) / 28.0) * min(1.0, len(current) / elapsed)
+        reliability = (min(1.0, status["n_baseline"] / 28.0)
+                       * min(1.0, status["n_recent"] / 7.0))
+        oriented_z = spec["polarity"] * status["z"]
         component_score = _score(oriented_z)
         components[spec["key"]] = {
             "score": component_score, "oriented_z": round(oriented_z, 2),
-            "current_mean": round(current_mean, 2), "baseline_median": round(center, 2),
-            "n_current": len(current), "n_baseline": len(baseline),
+            "current_mean": status["recent_mean"], "baseline_median": status["center"],
+            "n_current": status["n_recent"], "n_baseline": status["n_baseline"],
             "reliability": round(reliability, 3),
         }
         weighted.append(component_score * reliability)
         weights.append(reliability)
+    return _axis_result(axis_id, label, components, weighted, weights)
+
+
+def _axis_result(axis_id, label, components, weighted, weights, **extra):
     if not weights or sum(weights) <= 0:
         return {"id": axis_id, "label": label, "available": False,
                 "reason": "insufficient_history_or_current_data", "components": {}}
     index = sum(weighted) / sum(weights)
-    return {"id": axis_id, "label": label, "available": True,
-            "index": round(index, 1), "centered_delta": round(index - 50.0, 1),
-            "reliability": round(sum(weights) / len(weights), 3),
-            "components": components, "baseline_days": baseline_days}
+    result = {"id": axis_id, "label": label, "available": True,
+              "index": round(index, 1), "centered_delta": round(index - 50.0, 1),
+              "reliability": round(sum(weights) / len(weights), 3),
+              "components": components, "baseline_days": 28}
+    result.update(extra)
+    return result
+
+
+def load_rows(daily, load_history=None):
+    """Daily load map: explicit load_history, else training_load found in the daily rows."""
+    if load_history:
+        return dict(load_history)
+    return {day: row["training_load"] for day, row in baseline.index_rows(daily).items()
+            if _finite(row.get("training_load"))}
+
+
+def _load_axis(daily, label, as_of, load_history, min_span=21, window=42):
+    loads = load_rows(daily, load_history)
+    series = banister_series(loads, as_of)
+    if len(series) < min_span:
+        return _axis_result("training_load_fatigue", label, {}, [], [])
+    today = series[-1]
+    start = baseline._shift(as_of, -window)
+    prior = [tsb for day, _, _, tsb in series[:-1] if day >= start]
+    if len(prior) < 7:
+        return _axis_result("training_load_fatigue", label, {}, [], [])
+    center = _median(prior)
+    z = (today[3] - center) / baseline.robust_scale(prior, center, "tsb")
+    reliability = min(1.0, len(prior) / 28.0)
+    score = _score(z)
+    components = {"tsb": {
+        "score": score, "oriented_z": round(z, 2), "current_mean": round(today[3], 2),
+        "baseline_median": round(center, 2), "n_current": 1, "n_baseline": len(prior),
+        "reliability": round(reliability, 3)}}
+    uncoupled = acwr_uncoupled(loads, as_of)
+    return _axis_result("training_load_fatigue", label, components, [score * reliability],
+                        [reliability], load={
+                            "atl": round(today[1], 2), "ctl": round(today[2], 2),
+                            "tsb": round(today[3], 2), "acwr_uncoupled": uncoupled},
+                        baseline_days=window)
 
 
 def change_candidates(daily, as_of, recent_days=7, baseline_days=28):
@@ -157,21 +175,23 @@ def change_candidates(daily, as_of, recent_days=7, baseline_days=28):
     baseline_start = (as_of_day - timedelta(days=recent_days + baseline_days - 1)).strftime("%Y%m%d")
     signals = []
     for spec in SIGNALS:
-        baseline = [float(row[spec["key"]]) for _, row in _records(daily)
-                    if baseline_start <= row["date"] <= baseline_end
-                    and _finite(row.get(spec["key"]))]
-        recent = [float(row[spec["key"]]) for _, row in _records(daily)
-                  if recent_start <= row["date"] <= as_of and _finite(row.get(spec["key"]))]
-        if len(baseline) < 14 or len(recent) < 3:
+        key = spec["key"]
+        base = [baseline.forward(key, row.get(key)) for _, row in _records(daily)
+                if baseline_start <= row["date"] <= baseline_end]
+        base = [value for value in base if value is not None]
+        recent = [baseline.forward(key, row.get(key)) for _, row in _records(daily)
+                  if recent_start <= row["date"] <= as_of]
+        recent = [value for value in recent if value is not None]
+        if len(base) < 14 or len(recent) < 3:
             continue
-        center = _median(baseline)
+        center = _median(base)
         recent_center = _median(recent)
-        shift_z = (recent_center - center) / _scale(baseline, center)
+        shift_z = (recent_center - center) / baseline.robust_scale(base, center, key)
         signals.append({
-            "key": spec["key"], "baseline_median": round(center, 2),
-            "recent_median": round(recent_center, 2),
+            "key": key, "baseline_median": round(baseline.inverse(key, center), 2),
+            "recent_median": round(baseline.inverse(key, recent_center), 2),
             "robust_shift_z": round(shift_z, 2), "candidate": abs(shift_z) >= 2.5,
-            "n_baseline": len(baseline), "n_recent": len(recent),
+            "n_baseline": len(base), "n_recent": len(recent),
         })
     return {"kind": "change_candidates", "status": "descriptive_not_validated",
             "as_of": as_of, "candidate_count": sum(row["candidate"] for row in signals),
@@ -179,8 +199,9 @@ def change_candidates(daily, as_of, recent_days=7, baseline_days=28):
             "warning": "Statistical shifts are not medical alerts, causes, or prescriptions."}
 
 
-def multidomain_state(daily, mon, as_of):
-    axes = [_axis_state(daily, axis_id, label, mon, as_of) for axis_id, label in AXES]
+def multidomain_state(daily, mon, as_of, load_history=None):
+    axes = [_axis_state(daily, axis_id, label, mon, as_of, load_history=load_history)
+            for axis_id, label in AXES]
     available = [axis for axis in axes if axis["available"]]
     elapsed = max(1, (_day(as_of) - _day(mon)).days + 1)
     mean_reliability = (sum(axis["reliability"] for axis in available) / len(available)

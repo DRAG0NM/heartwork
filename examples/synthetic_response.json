@@ -8,8 +8,9 @@
   "observations": [
     {
       "id": "obs_sleep_latest",
-      "statement": "合成数据中最近一晚睡眠时长为 455 分钟。",
+      "statement": "合成数据中最近一晚睡眠时长为 455 分钟，近 7 天均值处于个人基线的正常范围内。",
       "confidence": "medium",
+      "claims": [{"metric": "sleep_duration_min", "direction": "within"}],
       "evidence": [
         {"source": "coach_context", "pointer": "/views/raw_signals/0/latest", "layer": "raw_signal", "observed_value": 455.0}
       ]

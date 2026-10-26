@@ -118,6 +118,7 @@ def make_handler(base):
             routes = {
                 "/api/snapshot": lambda: api.snapshot(base, as_of),
                 "/api/history": lambda: history(base, as_of),
+                "/api/daily": lambda: api.daily_view(base, as_of),
                 "/api/status": lambda: api.status(base),
                 "/api/report": lambda: api.weekly_report(base, as_of),
                 "/api/suggestions": lambda: {"items": api.pending_suggestions(base)},
@@ -126,6 +127,9 @@ def make_handler(base):
                 "/api/profile": lambda: api.get_profile(base),
                 "/api/plan": lambda: store.load_plan(base),
                 "/api/eval": lambda: api.run_eval(),
+                "/api/autonomy": lambda: api.get_autonomy(base),
+                "/api/decisions": lambda: api.decisions(base),
+                "/api/provenance": lambda: api.provenance(base, query["date"], query.get("metric")),
             }
             if url.path not in routes:
                 return self._send(404, {"error": "not found"})
@@ -153,6 +157,11 @@ def make_handler(base):
             if path == "/api/apply-plan":
                 return self._send(200, api.apply_plan(base, body["key"], body.get("text", ""),
                                                       body.get("confirm") is True))
+            if path == "/api/autonomy":
+                return self._send(200, api.set_autonomy(base, body.get("level"),
+                                                        body.get("confirm") is True))
+            if path == "/api/undo":
+                return self._send(200, api.undo(base, body["key"]))
             if path == "/api/profile":
                 return self._send(200, api.set_profile(base, body))
             if path == "/api/demo":

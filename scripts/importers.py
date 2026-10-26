@@ -10,6 +10,7 @@ heart-rate zones are only computed when the profile has ``hr_max``/``hr_zones``.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import math
 import os
@@ -433,16 +434,29 @@ def _walk(paths):
             yield path
 
 
-def _apple_from(handle, base, profile, result, path):
+def _sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _kind(path):
+    ext = os.path.splitext(path)[1].lower()
+    return "apple_health" if ext in (".xml", ".zip") else ext.lstrip(".")
+
+
+def _apple_from(handle, base, profile, result, path, ref):
     rows, intervals, workouts, sdnn = parse_apple(handle, profile)
-    result["daily_changes"] += store.upsert_daily(base, rows, "device")
-    result["activities"] += store.add_activities(base, workouts, "device")
+    result["daily_changes"] += store.upsert_daily(base, rows, "device", ref)
+    result["activities"] += store.add_activities(base, workouts, "device", ref)
     result["sleep_intervals"] += store.add_sleep_intervals(base, intervals)
     if sdnn:
         result["skipped"].append({"path": path, "reason": "HRV SDNN 与 RMSSD 口径不同，已跳过 %d 条，不写入 hrv_rmssd" % sdnn})
 
 
-def _import_file(base, path, profile, result):
+def _import_file(base, path, profile, result, ref):
     """Return None on success, otherwise a Chinese reason the file was skipped."""
     ext = os.path.splitext(path)[1].lower()
     if ext == ".fit":
@@ -450,32 +464,32 @@ def _import_file(base, path, profile, result):
             activities = parse_fit(handle.read(), profile)
         if not activities:
             return "没有找到运动记录"
-        result["activities"] += store.add_activities(base, activities, "device")
+        result["activities"] += store.add_activities(base, activities, "device", ref)
     elif ext in (".gpx", ".tcx"):
         root = ET.parse(path).getroot()
         activities = (parse_gpx if ext == ".gpx" else parse_tcx)(root, profile)
         if not activities:
             return "没有找到带时间的轨迹点"
-        result["activities"] += store.add_activities(base, activities, "device")
+        result["activities"] += store.add_activities(base, activities, "device", ref)
     elif ext == ".csv":
         with open(path, "rb") as handle:
             rows = parse_csv(handle.read())
         if not rows:
             return "表头里没有可识别的日期或指标列"
-        result["daily_changes"] += store.upsert_daily(base, rows, "import")
+        result["daily_changes"] += store.upsert_daily(base, rows, "import", ref)
     elif ext == ".xml":
         with open(path, "rb") as handle:
             if b"<HealthData" not in handle.read(4096):
                 return "不是 Apple Health export.xml"
             handle.seek(0)
-            _apple_from(handle, base, profile, result, path)
+            _apple_from(handle, base, profile, result, path, ref)
     elif ext == ".zip":
         with zipfile.ZipFile(path) as archive:
             member = next((n for n in archive.namelist() if os.path.basename(n) == "export.xml"), None)
             if member is None:
                 return "压缩包里没有 export.xml"
             with archive.open(member) as handle:
-                _apple_from(handle, base, profile, result, path)
+                _apple_from(handle, base, profile, result, path, ref)
     else:
         return "不支持的格式"
     return None
@@ -490,12 +504,20 @@ def import_paths(base, paths):
         if not os.path.exists(path):
             result["skipped"].append({"path": path, "reason": "路径不存在"})
             continue
+        counted = ("activities", "daily_changes", "sleep_intervals")
+        before = {key: result[key] for key in counted}
         try:
-            reason = _import_file(base, path, profile, result)
+            sha = _sha256(path)
+            ref = {"name": os.path.basename(path), "sha256": sha}
+            reason = _import_file(base, path, profile, result, ref)
         except Exception as error:
             reason = "解析失败: %s" % error
         if reason:
             result["skipped"].append({"path": path, "reason": reason})
         else:
             result["files"] += 1
+            store.add_import(base, {
+                "file": ref["name"], "sha256": sha, "size": os.path.getsize(path),
+                "imported_at": datetime.now().isoformat(timespec="seconds"), "kind": _kind(path),
+                "counts": {key: result[key] - before[key] for key in counted}})
     return result

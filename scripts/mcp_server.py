@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Stdlib MCP server (stdio, optional local streamable HTTP) over the sports-eval facade.
 
-decide / apply_plan are deliberately not exposed: only a human confirms plan changes.
+decide / apply_plan / set_autonomy / undo are deliberately not exposed: only a human confirms
+plan changes, raises the coach's autonomy or reverts an automatic change.
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ TOOLS = [
     ("list_pending_suggestions", "列出待用户决定的计划建议（本服务不提供接受/应用，需用户在网页或 CLI 确认）。",
      _schema()),
     ("run_eval", "运行固定场景回放评测（硬门）。", _schema()),
+    ("get_autonomy", "读取教练权限档位（只读；档位只能由用户在网页或 CLI 修改）。", _schema()),
     ("get_profile", "读取个人设置（hr_max、hr_rest、hr_zones、goal、notes）。", _schema()),
 ]
 TOOL_NAMES = {item[0] for item in TOOLS}
@@ -97,11 +99,15 @@ class Server:
             result = api.complete_job(home, args.get("job_id", ""), args.get("response"))
             if result["suggestions"]:
                 result["note"] = CONFIRM_HINT
+            if result.get("auto_applied"):
+                result["note"] = "部分计划已按激进档自动应用；用户可在 7 天内于网页或 CLI（sec.py undo）撤销。"
             return result
         if name == "list_pending_suggestions":
             return {"suggestions": api.pending_suggestions(home), "note": CONFIRM_HINT}
         if name == "run_eval":
             return api.run_eval()
+        if name == "get_autonomy":
+            return api.get_autonomy(home)
         return api.get_profile(home)
 
     def handle(self, message):
@@ -123,7 +129,7 @@ class Server:
             return {"protocolVersion": params.get("protocolVersion") or DEFAULT_PROTOCOL,
                     "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False},
                                      "resources": {"listChanged": False}},
-                    "serverInfo": {"name": "sports-eval-core", "version": "0.3.0"},
+                    "serverInfo": {"name": "sports-eval-core", "version": "0.4.0"},
                     "instructions": "先 start_coach_job，按 instructions 只输出 Response v2 JSON，再 "
                                     "submit_coach_response。计划变更需用户在网页或 CLI 确认。"}
         if method == "ping":

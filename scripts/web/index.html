@@ -56,10 +56,11 @@ h1.day{font-family:var(--serif);font-weight:400;font-size:30px;line-height:1.25;
 .caption{color:var(--ink-2);margin:0 0 14px}
 .art-wrap{position:relative;border-radius:14px;overflow:hidden;background:var(--art-bg);border:1px solid var(--line)}
 #art{display:block;width:100%;height:auto;aspect-ratio:16/7}
-#art .strand{fill:none;stroke-linecap:round;transition:opacity .25s var(--ease),stroke-width .25s var(--ease)}
+#art .strand,#mini .strand{fill:none;stroke-linecap:round;transition:opacity .25s var(--ease),stroke-width .25s var(--ease)}
 #art .fam{cursor:pointer}
-#art.focusing .fam{opacity:.16}
-#art.focusing .fam.on{opacity:1}
+#art.focusing .fam,#mini.focusing .fam{opacity:.12}
+#art.focusing .fam.on,#mini.focusing .fam.on{opacity:1}
+#mini .fam{transition:opacity .25s var(--ease)}
 #art .fam.on .strand.lead{stroke-width:4}
 #art .hit{fill:none;stroke:transparent;stroke-width:22;pointer-events:stroke}
 #art .draw{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 1.6s var(--ease) forwards}
@@ -139,6 +140,25 @@ aside h3:first-child{margin-top:0}
 .empty{padding:60px 20px;text-align:center}
 details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
 [hidden]{display:none!important}
+.seg{display:flex;border:1px solid var(--line-2);border-radius:999px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;border-radius:999px;padding:5px 0;font-size:13px;background:none;color:var(--ink-2)}
+.seg button.on{background:var(--ink);color:var(--paper)}
+.claim{display:inline-block;font-size:12px;padding:0 7px;margin:0 4px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2)}
+.sugg.auto{border-style:dashed}
+.mini{position:fixed;left:24px;bottom:24px;width:300px;border-radius:12px;overflow:hidden;background:var(--art-bg);border:1px solid var(--line-2);opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .3s var(--ease),transform .3s var(--ease);z-index:5;cursor:pointer}
+.mini.show{opacity:1;transform:none;pointer-events:auto}
+.mini svg{display:block;width:100%;height:auto;aspect-ratio:16/7}
+.mini span{position:absolute;left:10px;bottom:6px;font-size:11px;color:var(--ink-3)}
+@media (max-width:1060px){.mini{display:none}}
+.art-tools{position:absolute;left:12px;top:10px;display:flex;gap:6px;z-index:2}
+.art-tools button{font-size:12px;padding:2px 10px;border-radius:999px;background:var(--art-bg);border-color:var(--line-2);color:var(--ink-2)}
+.overlay{position:fixed;inset:0;background:rgba(10,12,14,.55);display:flex;align-items:center;justify-content:center;z-index:20;padding:20px}
+.sheet{background:var(--paper);color:var(--ink);border-radius:16px;max-width:760px;width:100%;max-height:90vh;overflow:auto;padding:24px 26px;border:1px solid var(--line-2)}
+.sheet h2{font-family:var(--serif);font-weight:400;font-size:24px;margin:0 0 6px}
+.read{display:grid;grid-template-columns:120px 1fr;gap:14px 16px;align-items:center;margin:18px 0}
+.read svg{width:120px;height:46px;border-radius:8px;background:var(--art-bg)}
+.poster-grid{margin:16px 0}
+.poster-grid svg{width:100%;height:auto;border-radius:8px;border:1px solid var(--line)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
 </head>
@@ -158,6 +178,7 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
     <svg id="art" viewBox="0 0 1600 700" preserveAspectRatio="xMidYMid slice" role="img" aria-label="由当日身体数据生成的画"></svg>
     <div class="legend" id="legend"></div>
     <div class="tip" id="tip"></div>
+    <div class="art-tools"><button id="howBtn">怎么读</button><button id="posterBtn">本周海报</button></div>
   </div>
   <div class="scrub" id="scrub" aria-label="选择日期"></div>
   <p class="prov" id="prov"><span class="muted">悬停任一笔触看它来自哪条数据；点击可固定。灰色虚线代表这一天没有该数据，不做填补。</span></p>
@@ -190,10 +211,15 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
 
   <h3 id="exploreTitle">探索</h3>
   <svg id="spark" viewBox="0 0 316 120" width="100%" aria-label="指标趋势"></svg>
-  <p class="small muted" style="margin:4px 0 0">灰带是前 28 天的四分位区间；50 只是你的个人常态锚点，不是健康及格线。</p>
+  <p class="small muted" style="margin:4px 0 0">灰带是所选那天的常态区间（再往前 28 天的中位数 ± 最小有意义变化）；落在带内就是正常波动。</p>
 
   <h3>多维状态（实验层）</h3>
   <div class="axes" id="axes"></div>
+
+  <h3>教练权限</h3>
+  <div class="seg" id="autoSeg" role="radiogroup" aria-label="教练权限档位"></div>
+  <p class="small muted" id="autoRules" style="margin:6px 0 0"></p>
+  <label class="check small" id="autoConfirm" hidden><input type="checkbox">我明白：激进档下，满足护栏的改计划建议会直接生效，我可以 7 天内撤销</label>
 
   <h3>待你确认</h3>
   <div id="suggs"><p class="small muted">暂无。改计划的建议只会出现在这里，只有你能盖章。</p></div>
@@ -237,6 +263,20 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
 </aside>
 </div>
 <div class="toast" id="toast" role="status"></div>
+<div class="mini" id="miniDock" title="回到画"><svg id="mini" viewBox="0 0 1600 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg><span id="miniDate"></span></div>
+<div class="overlay" id="howSheet" hidden><div class="sheet" role="dialog" aria-labelledby="howTitle">
+  <h2 id="howTitle">怎么读这幅画</h2>
+  <p class="muted" style="margin:0">每天一幅，由你那天的数据确定性地生成：同样的数据永远画出同样的画。参照物永远是你自己前 28 天的常态。</p>
+  <div class="read" id="howList"></div>
+  <p class="small muted">画是为了让你一眼感到变化；具体数值、常态区间和来源，悬停或点击笔触就能看到。实验层的结论不会单独变成训练处方。</p>
+  <div class="row" style="justify-content:flex-end"><button class="primary" data-close>知道了</button></div>
+</div></div>
+<div class="overlay" id="posterSheet" hidden><div class="sheet" role="dialog" aria-labelledby="posterTitle">
+  <h2 id="posterTitle">本周海报</h2>
+  <p class="muted small" id="posterSub" style="margin:0"></p>
+  <div id="posterBox" class="poster-grid"></div>
+  <div class="row" style="justify-content:flex-end"><button data-close>关闭</button><button class="primary" id="posterDl">下载 PNG</button></div>
+</div></div>
 
 <script>
 "use strict";
@@ -279,16 +319,12 @@ async function api(path,opt){
 }
 
 /* ---------- personal baseline (prior 28 days, robust) ---------- */
-function stats(metric,day){
-  const rows=S.hist.daily.filter(r=>r.date<day&&r[metric]!=null).slice(-28).map(r=>+r[metric]).sort((a,b)=>a-b);
-  if(rows.length<5)return null;
-  const q=p=>rows[Math.min(rows.length-1,Math.max(0,Math.round(p*(rows.length-1))))];
-  const med=q(.5),iqr=Math.max(q(.75)-q(.25),Math.abs(med)*.03,1e-6);
-  return {med,q1:q(.25),q3:q(.75),scale:iqr/1.349,n:rows.length};
-}
-function zOf(metric,day,value){const st=stats(metric,day);if(!st||value==null)return null;return (value-st.med)/st.scale}
-function tone(metric,z){const p=METRIC[metric]?.pol??0;if(z==null||p===0)return "near";const o=p*z;return o>.6?"good":o<-.6?"strain":"near"}
+function st(metric,day){const m=S.dayIdx[day]?.metrics?.[metric];return m&&m.center!=null?m:null}
+function tone(o){return o==="better"?"good":o==="worse"?"strain":"near"}
 function row(day){return S.hist.daily.find(r=>r.date===day)||{date:day}}
+const SWC_Z=.5;
+function beyond(z){return z==null?0:Math.sign(z)*Math.max(0,Math.abs(z)-SWC_Z)}
+const STATUS_TEXT={above:"高于常态",below:"低于常态",within:"在正常波动内"};
 
 /* ---------- seeded noise ---------- */
 function rng(seed){let a=seed>>>0;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -307,9 +343,9 @@ function smoothPath(pts){
 function famParams(fam,day){
   const r=row(day),keys=FAM[fam].keys.filter(k=>r[k]!=null);
   if(!keys.length)return {missing:true};
-  const zs=keys.map(k=>{const z=zOf(k,day,+r[k]);return z==null?0:(METRIC[k].pol||1)*z});
-  const z=zs.reduce((a,b)=>a+b,0)/zs.length,coh=1/(1+Math.exp(-1.6*z));
-  const p={missing:false,z,keys,coh};
+  const fs=S.dayIdx[day]?.families?.[fam];
+  const z=fam==="load"?0:beyond(fs&&fs.available?fs.z:null),coh=1/(1+Math.exp(-1.6*z));
+  const p={missing:false,z,keys,coh,oriented:fs?.oriented};
   if(fam==="load"){
     const v=+r.training_load||0,acts=S.hist.activities.filter(a=>a.date===day);
     const hi=acts.reduce((s,a)=>s+((a.hr_zone_minutes||[])[3]||0)+((a.hr_zone_minutes||[])[4]||0),0);
@@ -351,18 +387,28 @@ function strands(fam,day,W,H,detail){
 function el(tag,attrs,parent){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);parent&&parent.appendChild(e);return e}
 
 function drawArt(day,animate=true){
-  const svg=$("#art");svg.innerHTML="";const W=1600,H=700;
+  paintDay($("#art"),day,{animate,interactive:true});
+  paintDay($("#mini"),day,{animate:false,interactive:false});
+  $("#miniDate").textContent=`${fmtDate(day)} · 周${wk(day)}`;
+  if(S.pinned)focusFam(S.pinned);
+  $("#legend").innerHTML=Object.keys(FAM).map(f=>`<span data-fam="${f}"><i style="background:var(--f-${f})"></i>${FAM[f].label}</span>`).join("");
+  $("#legend").querySelectorAll("span").forEach(sp=>{sp.onmouseenter=()=>focusFam(sp.dataset.fam);sp.onmouseleave=()=>focusFam(S.pinned)});
+}
+function paintDay(svg,day,{animate=false,interactive=false,bg=false}={}){
+  svg.innerHTML="";const W=1600,H=700;
+  if(bg)el("rect",{width:W,height:H,fill:css("--art-bg")},svg);
   const ghost=css("--art-ghost");
   for(const fam of Object.keys(FAM)){
     const g=el("g",{class:"fam","data-fam":fam},svg),col=css("--f-"+fam);
     const {p,list}=strands(fam,day,W,H,true);
     list.forEach((s,i)=>{
       if(s.ribbon){el("path",{d:s.d,fill:col,"fill-opacity":.07,stroke:"none",class:"strand"},g);return}
-      const path=el("path",{d:s.d,class:"strand"+(s.lead?" lead":"")+(animate?" draw":""),stroke:s.ghost?ghost:col,"stroke-width":s.w,"stroke-opacity":s.ghost?1:s.alpha??1},g);
+      const path=el("path",{d:s.d,fill:"none","stroke-linecap":"round",class:"strand"+(s.lead?" lead":"")+(animate?" draw":""),stroke:s.ghost?ghost:col,"stroke-width":s.w,"stroke-opacity":s.ghost?1:s.alpha??1},g);
       if(s.ghost)path.setAttribute("stroke-dasharray","6 10");
       if(animate&&!s.ghost){const L=Math.ceil(path.getTotalLength());path.style.setProperty("--len",L);path.style.animationDelay=(Object.keys(FAM).indexOf(fam)*.12+i*.05)+"s"}
     });
     if(fam==="load"&&p.knots){const R=rng(hash(day+"knot")),lead=(list.find(x=>x.lead)||list[0]).pts;for(let k=0;k<p.knots;k++){const pt=lead[Math.floor(lead.length*(.2+.65*R()))];for(let j=0;j<2;j++)el("circle",{cx:pt[0],cy:pt[1],r:5+j*6+R()*3,fill:j?"none":col,"fill-opacity":.9,stroke:col,"stroke-width":1.2,"stroke-opacity":.6},g)}}
+    if(!interactive)continue;
     const hit=el("path",{d:(list.find(x=>x.lead)||list[0]).d,class:"hit"},g);
     g.addEventListener("mousemove",e=>showTip(fam,day,e));
     g.addEventListener("mouseleave",hideTip);
@@ -372,23 +418,24 @@ function drawArt(day,animate=true){
   ev.forEach((e,i)=>{const cx=W*(.62+i*.06),cy=FAM.recovery.y*H;const g=el("g",{class:"fam","data-fam":"event"},svg);
     for(let k=0;k<6;k++)el("circle",{cx:cx+Math.sin(k*1.7)*4,cy:cy+Math.cos(k*2.3)*4,r:10+k*6+(e.pain||0)*2,fill:"none",stroke:css("--alarm"),"stroke-width":2-k*.25,"stroke-opacity":1-k*.14},g);
     el("circle",{cx,cy,r:4,fill:css("--alarm")},g);
-    g.addEventListener("mousemove",m=>tipHTML(`<b style="color:var(--alarm)">主观事件</b><br>疼痛 ${e.pain??"—"}${e.illness?" · 生病":""}${(e.red_flags||[]).map(f=>" · "+RED_FLAGS[f]).join("")}<br><code class="muted">/recent_events</code>`,m));g.addEventListener("mouseleave",hideTip)});
-  if(S.pinned)focusFam(S.pinned);
-  $("#legend").innerHTML=Object.keys(FAM).map(f=>`<span data-fam="${f}"><i style="background:var(--f-${f})"></i>${FAM[f].label}</span>`).join("");
-  $("#legend").querySelectorAll("span").forEach(sp=>{sp.onmouseenter=()=>focusFam(sp.dataset.fam);sp.onmouseleave=()=>focusFam(S.pinned)});
+    if(interactive){g.addEventListener("mousemove",m=>tipHTML(`<b style="color:var(--alarm)">主观事件</b><br>疼痛 ${e.pain??"—"}${e.illness?" · 生病":""}${(e.red_flags||[]).map(f=>" · "+RED_FLAGS[f]).join("")}<br><code class="muted">/recent_events</code>`,m));g.addEventListener("mouseleave",hideTip)}});
 }
 function thumb(day){
   const svg=document.createElementNS(SVGNS,"svg");svg.setAttribute("viewBox","0 0 1600 700");
   for(const fam of Object.keys(FAM)){const {list}=strands(fam,day,1600,700,false);list.filter(s=>!s.ribbon).forEach(s=>el("path",{d:s.d,fill:"none",stroke:s.ghost?css("--art-ghost"):css("--f-"+fam),"stroke-width":s.w*7,"stroke-opacity":s.ghost?.7:(s.alpha??1),"stroke-linecap":"round"},svg))}
   return svg;
 }
-function focusFam(fam){const svg=$("#art");svg.classList.toggle("focusing",!!fam);svg.querySelectorAll(".fam").forEach(g=>g.classList.toggle("on",g.dataset.fam===fam));document.querySelectorAll(".chip,.ev").forEach(c=>c.classList.toggle("on",!!fam&&c.dataset.fam===fam))}
+function focusFam(fam){for(const svg of [$("#art"),$("#mini")]){svg.classList.toggle("focusing",!!fam);svg.querySelectorAll(".fam").forEach(g=>g.classList.toggle("on",g.dataset.fam===fam))}document.querySelectorAll(".chip,.ev").forEach(c=>c.classList.toggle("on",!!fam&&c.dataset.fam===fam))}
 
 /* ---------- provenance ---------- */
+const LOAD_METHOD={device:"设备负荷",trimp_edwards:"心率区 TRIMP",srpe:"sRPE（RPE×分钟）"};
 function famLines(fam,day){
   const r=row(day);
-  return FAM[fam].keys.map(k=>{const st=stats(k,day),v=r[k];if(v==null)return `<span class="muted">${METRIC[k].label}：这一天没有数据</span>`;
-    const d=st?v-st.med:null;return `${METRIC[k].label} <b class="num">${r1(v)}</b>${METRIC[k].unit?" "+METRIC[k].unit:""}${st?` <span class="muted num">· 常态 ${r1(st.med)}（${d>=0?"+":""}${r1(d)}）</span>`:""}`});
+  if(fam==="load"){const L=S.dayIdx[day]?.load;if(L?.value!=null)return [`训练负荷 <b class="num">${r1(L.value)}</b> <span class="muted">· ${LOAD_METHOD[L.method]||esc(L.method||"")}${L.tsb!=null?` · TSB ${L.tsb>=0?"+":""}${r1(L.tsb)}`:""}</span>`];if(L)return ['<span class="muted">休息日</span>']}
+  return FAM[fam].keys.map(k=>{const v=r[k],m=st(k,day),M=METRIC[k];if(v==null)return `<span class="muted">${M.label}：这一天没有数据</span>`;
+    const unit=M.unit?" "+M.unit:"";
+    if(!m)return `${M.label} <b class="num">${r1(v)}</b>${unit} <span class="muted">· 基线不足</span>`;
+    return `${M.label} <b class="num">${r1(v)}</b>${unit} <span class="muted num">· 近 7 天 ${r1(m.recent_mean)}，常态 ${r1(m.band[0])}–${r1(m.band[1])}，${STATUS_TEXT[m.status]}</span>`});
 }
 function tipHTML(html,e){const t=$("#tip"),box=$(".art-wrap").getBoundingClientRect();t.innerHTML=html;t.classList.add("show");
   const x=Math.min(e.clientX-box.left+14,box.width-t.offsetWidth-8),y=Math.min(e.clientY-box.top+14,box.height-t.offsetHeight-8);t.style.left=x+"px";t.style.top=y+"px"}
@@ -396,8 +443,11 @@ function showTip(fam,day,e){if(!S.pinned)focusFam(fam);tipHTML(`<b style="color:
 function hideTip(){$("#tip").classList.remove("show");if(!S.pinned)focusFam(null)}
 function provenance(fam,day){
   const p=$("#prov");if(!S.pinned){p.innerHTML='<span class="muted">悬停任一笔触看它来自哪条数据；点击可固定。</span>';return}
-  const keys=FAM[fam].keys.filter(k=>row(day)[k]!=null);
-  p.innerHTML=`<b style="color:var(--f-${fam})">${FAM[fam].label}</b>　${famLines(fam,day).join("　")}　<code>来源：工作区 daily.json · ${day}${keys.length?" · "+keys.join(", "):""}</code>`;
+  p.innerHTML=`<b style="color:var(--f-${fam})">${FAM[fam].label}</b>　${famLines(fam,day).join("　")}<br><span class="muted small" id="provFiles">正在查来源…</span>`;
+  api(`/api/provenance?date=${day}`).then(pv=>{const el=$("#provFiles");if(!el)return;const parts=[];
+    for(const k of FAM[fam].keys){const m=pv.metrics?.[k];if(!m)continue;parts.push(`${METRIC[k].label}：${m.file?`<code>${esc(m.file.name)}</code> · ${esc((m.file.sha256||"").slice(0,12))}`:m.source==="demo"?"合成示例":m.source==="manual"?"手动录入":esc(m.source||"未知")}`)}
+    for(const a of pv.activities||[])if(fam==="load")parts.push(`${esc(a.type)}：${a.source_file?`<code>${esc(a.source_file.name)}</code>`:"合成示例"}`);
+    el.innerHTML="来源　"+(parts.join("　")||"无")}).catch(()=>{const el=$("#provFiles");if(el)el.textContent="来源：工作区 daily.json"});
 }
 
 /* ---------- headline & caption from the same numbers ---------- */
@@ -407,9 +457,9 @@ function headline(day){
   if(gate==="red")return ["今天先别练，红旗信号需要就医评估。","安全门由确定性规则判定，模型不能降级。"];
   if(gate==="yellow")return ["今天以保护为主。","近 14 天有疼痛或生病记录，正常加量被安全门挡住。"];
   const lines=[];
-  const r=rec.missing?null:rec.z,s=slp.missing?null:slp.z;
-  const head=r==null?"恢复数据缺席，先看你自己的感觉。":r>.8?"身体比你的常态松快。":r>.25?"身体比常态好一点。":r<-.8?"身体比常态紧绷不少。":r<-.25?"身体比常态紧一点。":"身体接近你的常态。";
-  if(s!=null)lines.push(s>.5?"睡眠舒展":s<-.5?"睡眠偏短":"睡眠如常");
+  const fr=S.dayIdx[day]?.families?.recovery,fsl=S.dayIdx[day]?.families?.sleep;
+  const head=!fr||!fr.available?"恢复数据还不够，先听听你自己的感觉。":fr.oriented==="better"?(fr.z>1.5?"身体明显比你的常态松快。":"身体比常态好一点。"):fr.oriented==="worse"?(fr.z<-1.5?"身体比常态紧绷不少。":"身体比常态紧一点。"):"身体在你的正常波动内。";
+  if(fsl&&fsl.available)lines.push(fsl.oriented==="better"?"睡眠舒展":fsl.oriented==="worse"?"睡眠偏少":"睡眠如常");
   const acts=S.hist.activities.filter(a=>a.date===day);
   lines.push(acts.length?acts.map(a=>`${a.type} ${r1((a.distance_m||0)/1000)} km`).join("、"):"休息日");
   if(!load.missing&&load.knots)lines.push(`高心率区 ${load.knots} 个结`);
@@ -422,25 +472,29 @@ function drawRing(){
   const v=ax&&ax.available?ax.index:null,R=48,C=2*Math.PI*R;
   el("circle",{cx:60,cy:60,r:R,fill:"none",stroke:css("--line"),"stroke-width":10},svg);
   el("line",{x1:60,y1:6,x2:60,y2:18,stroke:css("--ink-3"),"stroke-width":1},svg).setAttribute("transform","rotate(180 60 60)");
-  if(v!=null){const t=v>58?"--good":v<42?"--strain":"--near";
+  if(v!=null){const o=S.dayIdx[S.snap.week.as_of]?.families?.recovery?.oriented,t=o==="better"?"--good":o==="worse"?"--strain":"--near";
     const arc=el("circle",{cx:60,cy:60,r:R,fill:"none",stroke:css(t),"stroke-width":10,"stroke-linecap":"round","stroke-dasharray":`${C*v/100} ${C}`,transform:"rotate(-90 60 60)"},svg);
     const tx=el("text",{x:60,y:64,"text-anchor":"middle","font-size":26,fill:css("--ink"),style:"font-family:var(--serif)"},svg);tx.textContent=Math.round(v);
     const sub=el("text",{x:60,y:82,"text-anchor":"middle","font-size":10,fill:css("--ink-3")},svg);sub.textContent="恢复 · 锚点 50";
-    const d=v-50;$("#glanceText").textContent=d>8?"明显好于你的常态":d>3?"比你的常态好一点":d<-8?"明显低于你的常态":d<-3?"比你的常态差一点":"接近你的常态";
+    const fr=S.dayIdx[S.snap.week.as_of]?.families?.recovery;$("#glanceText").textContent=!fr||!fr.available?"恢复数据不足":fr.oriented==="better"?"好于你的常态":fr.oriented==="worse"?"低于你的常态":"在你的正常波动内";
     $("#glanceSub").textContent=`本周至 ${fmtDate(S.snap.week.as_of)} · 可信度 ${Math.round((ax.reliability||0)*100)}%`;
   }else{$("#glanceText").textContent="恢复轴数据不足";$("#glanceSub").textContent="需要至少 7 天基线和本周数据"}
   const g=S.snap.safety_gate.level;$("#gate").innerHTML=`<span class="tag ${g}">安全门 ${({green:"绿",yellow:"黄",red:"红"})[g]}</span>`;
 }
 function drawChips(){
-  const box=$("#chips");box.innerHTML="";
-  for(const s of S.snap.raw_signals){
-    if(s.latest==null)continue;const m=METRIC[s.key]||{pol:0,fam:"recovery"};
-    const z=zOf(s.key,s.latest_date,s.latest),t=tone(s.key,z),d=s.delta_vs_baseline;
-    const b=document.createElement("button");b.className=`chip ${t}${S.metric===s.key?" sel":""}`;b.dataset.fam=m.fam;
-    b.innerHTML=`${esc(s.label)} <b class="num">${r1(s.latest)}</b><small class="num">${d==null?"无基线":(d>=0?"+":"")+r1(d)+" vs 常态"}</small>`;
-    b.onclick=()=>{S.metric=s.key;drawChips();drawSpark()};b.onmouseenter=()=>focusFam(m.fam);b.onmouseleave=()=>focusFam(S.pinned);
+  const box=$("#chips");box.innerHTML="";const day=S.snap.week.as_of,ms=S.dayIdx[day]?.metrics||{};
+  for(const k of Object.keys(METRIC)){
+    const m=ms[k];if(!m||m.value==null&&m.recent_mean==null)continue;const M=METRIC[k];
+    const b=document.createElement("button");b.className=`chip ${tone(m.oriented)}${S.metric===k?" sel":""}`;b.dataset.fam=M.fam;
+    b.innerHTML=`${esc(M.label)} <b class="num">${r1(m.value??m.recent_mean)}</b><small>${m.status?STATUS_TEXT[m.status]:"基线不足"}</small>`;
+    b.title=m.center!=null?`近 7 天 ${r1(m.recent_mean)} · 常态 ${r1(m.band[0])}–${r1(m.band[1])}（中位 ${r1(m.center)}，超出最小有意义变化才算高/低）`:"基线不足 7 天";
+    b.onclick=()=>{S.metric=k;drawChips();drawSpark()};b.onmouseenter=()=>focusFam(M.fam);b.onmouseleave=()=>focusFam(S.pinned);
     box.appendChild(b);
   }
+  const L=S.view.load_summary;
+  if(L&&L.ctl!=null){const d=document.createElement("div");d.className="small muted";d.style.cssText="flex-basis:100%;margin-top:4px";
+    const ac=L.acwr_uncoupled?` · 急慢比 ${r1(L.acwr_uncoupled.ratio)}`:"";
+    d.innerHTML=`负荷　疲劳 ATL <b class="num">${r1(L.atl)}</b> · 体能 CTL <b class="num">${r1(L.ctl)}</b> · 状态 TSB <b class="num">${L.tsb>=0?"+":""}${r1(L.tsb)}</b>${ac}`;box.appendChild(d)}
 }
 function drawSpark(){
   const svg=$("#spark");svg.innerHTML="";const k=S.metric,m=METRIC[k]||{label:k,unit:""};
@@ -451,8 +505,8 @@ function drawSpark(){
   const span=(new Date(last.slice(0,4),last.slice(4,6)-1,last.slice(6))-new Date(first.slice(0,4),first.slice(4,6)-1,first.slice(6)))/864e5||1;
   const X=d=>((new Date(d.slice(0,4),d.slice(4,6)-1,d.slice(6))-new Date(first.slice(0,4),first.slice(4,6)-1,first.slice(6)))/864e5)/span*(W-8)+4;
   const Y=v=>H-6-(v-lo+pad)/(hi-lo+2*pad)*(H-12);
-  const st=stats(k,S.day);
-  if(st)el("rect",{x:0,y:Y(st.q3),width:W,height:Math.max(1,Y(st.q1)-Y(st.q3)),fill:css("--line")},svg);
+  const sm=st(k,S.day);
+  if(sm)el("rect",{x:0,y:Y(sm.band[1]),width:W,height:Math.max(1,Y(sm.band[0])-Y(sm.band[1])),fill:css("--line")},svg);
   el("path",{d:rows.map((r,i)=>(i?"L":"M")+X(r.date).toFixed(1)+" "+Y(+r[k]).toFixed(1)).join(""),fill:"none",stroke:css("--ink"),"stroke-width":1.4},svg);
   const cur=rows.find(r=>r.date===S.day);
   el("line",{x1:X(S.day),x2:X(S.day),y1:0,y2:H,stroke:css("--f-"+(m.fam||"recovery")),"stroke-width":1,"stroke-dasharray":"2 3"},svg);
@@ -504,10 +558,12 @@ function evChips(ctx,items){
     const color=m.fam&&FAM[m.fam]?`var(--f-${m.fam})`:m.fam==="event"||m.fam==="gate"?"var(--alarm)":"var(--ink-3)";
     return `<span class="ev" data-fam="${m.fam||""}" data-date="${m.date||""}" title="${esc(it.pointer)} · ${esc(it.layer)}"><i style="background:${color}"></i>${esc(m.label)} ${val!==undefined?`<b class="num">${esc(val)}</b>`:""}</span>`}).join("");
 }
+const CLAIM_ARROW={above:"↑",below:"↓",within:"＝"};
+function claimChips(cl){return (cl||[]).map(c=>`<span class="claim" title="方向已与确定性基线核对">${CLAIM_ARROW[c.direction]||""} ${esc(METRIC[c.metric]?.label||c.metric)} ${STATUS_TEXT[c.direction]||esc(c.direction)} ✓</span>`).join("")}
 function renderAnswer(ctx,resp){
   let h="";
-  if(resp.observations?.length){h+="<h4>观察</h4>"+resp.observations.map(o=>`<p>${esc(o.statement)}${evChips(ctx,o.evidence)}</p>`).join("")}
-  if(resp.recommendations?.length){h+="<h4>建议</h4>"+resp.recommendations.map(o=>`<p><span class="act">${ACTION_LABEL[o.action_type]||esc(o.action_type)}</span>${esc(o.action)}${o.changes_plan?' <span class="tag yellow">待你确认</span>':""}${evChips(ctx,o.evidence)}</p>`).join("")}
+  if(resp.observations?.length){h+="<h4>观察</h4>"+resp.observations.map(o=>`<p>${esc(o.statement)}${claimChips(o.claims)}${evChips(ctx,o.evidence)}</p>`).join("")}
+  if(resp.recommendations?.length){h+="<h4>建议</h4>"+resp.recommendations.map(o=>`<p><span class="act">${ACTION_LABEL[o.action_type]||esc(o.action_type)}</span>${esc(o.action)}${o.changes_plan?(o.requires_confirmation===false&&ctx.policy?.level==="autonomous"?' <span class="tag green">激进档·可自动生效</span>':' <span class="tag yellow">待你确认</span>'):""}${evChips(ctx,o.evidence)}</p>`).join("")}
   if(resp.risks?.length){h+="<h4>风险</h4>"+resp.risks.map(o=>`<p><span class="tag ${esc(o.level)}">${esc(o.level)}</span> ${esc(o.signal)} → ${esc(o.action)}</p>`).join("")}
   if(resp.questions?.length){h+="<h4>想问你</h4>"+resp.questions.map(q=>`<p>${esc(q)}</p>`).join("")}
   if(resp.limitations?.length){h+=`<h4>局限</h4><p class="muted" style="font-size:14px">${resp.limitations.map(esc).join("；")}</p>`}
@@ -538,7 +594,8 @@ function jobCard(job){
       const raw=card.querySelector("textarea").value.trim(),err=card.querySelector("[data-err]");if(!raw){err.innerHTML='<div class="errors">先贴入 AI 的回复。</div>';return}
       try{const res=await api("/api/complete",{job_id:job.job_id,response:raw});
         if(!res.valid){err.innerHTML=`<div class="errors">没有通过验证，未展示给你：<br>${res.errors.map(e=>`<code>${esc(e.path)}</code> ${esc(e.message)}`).join("<br>")}</div>`;return}
-        const full=await api("/api/job?id="+encodeURIComponent(job.job_id));jobCard(full);loadSuggs();toast(res.suggestions.length?`有 ${res.suggestions.length} 条改计划建议等你确认`:"已验证")}
+        const full=await api("/api/job?id="+encodeURIComponent(job.job_id));jobCard(full);loadSuggs();loadPlan();const na=(res.auto_applied||[]).length,np=res.suggestions.length-na;
+        toast(na?`激进档已自动改计划 ${na} 条，可在右栏撤销`:np?`有 ${np} 条改计划建议等你确认`:"已验证")}
       catch(e){err.innerHTML=`<div class="errors">${esc(e.message)}</div>`}};
   }
   wireEvidence(card);S.jobs.set(job.job_id,done);
@@ -549,19 +606,39 @@ async function loadJobs(){
 }
 
 /* ---------- suggestions: the human seal ---------- */
+const BLOCK_TEXT={safety_gate_not_green:"安全门不是绿灯",no_raw_signal:"没有原始信号证据",low_confidence:"置信度不足",no_plan_text:"缺少计划全文",rate_limited:"72 小时内已自动改过一次",autonomy_lowered:"档位已调低"};
 async function loadSuggs(){
-  const {items}=await api("/api/suggestions"),box=$("#suggs");
+  const {suggestions}=await api("/api/decisions"),box=$("#suggs");
+  const items=suggestions.filter(s=>s.status==="pending"||s.status==="auto_applied"&&s.auto?.can_undo);
   if(!items.length){box.innerHTML='<p class="small muted">暂无。改计划的建议只会出现在这里，只有你能盖章。</p>';return}
   box.innerHTML="";
-  for(const s of items){const c=document.createElement("div");c.className="card sugg";
-    c.innerHTML=`<div class="serif">${esc(s.recommendation.action)}</div><div class="small muted" style="margin:4px 0 8px">${esc(s.key)} · 来自 ${esc(s.job_id)}</div>
+  for(const s of items){const c=document.createElement("div");
+    if(s.status==="auto_applied"){c.className="card sugg auto";
+      c.innerHTML=`<div class="small" style="color:var(--f-recovery)">教练已自动应用 · ${esc(s.auto.applied_at.replace("T"," ").slice(0,16))}</div><div class="serif" style="margin:4px 0">${esc(s.recommendation.action)}</div>
+      <div class="small muted" style="margin-bottom:8px">撤销期到 ${esc(s.auto.undo_until.slice(0,10))}，撤销会恢复原计划。</div><button data-u>撤销，恢复原计划</button>`;
+      c.querySelector("[data-u]").onclick=async()=>{try{await api("/api/undo",{key:s.key});toast("已恢复原计划");loadPlan();loadSuggs()}catch(e){toast(e.message)}};
+      box.appendChild(c);continue}
+    c.className="card sugg";
+    const blocked=(s.auto_blocked||[]).length?`<div class="small muted" style="margin-bottom:6px">没有自动生效：${s.auto_blocked.map(b=>BLOCK_TEXT[b]||esc(b)).join("、")}</div>`:"";
+    c.innerHTML=`<div class="serif">${esc(s.recommendation.action)}</div><div class="small muted" style="margin:4px 0 8px">${esc(s.key)} · 来自 ${esc(s.job_id)}</div>${blocked}
     <div class="row"><button class="primary" data-a>接受</button><button data-r>拒绝</button></div>
     <div data-apply hidden class="form" style="margin-top:8px"><textarea rows="3" placeholder="写下新的计划全文"></textarea><label class="check"><input type="checkbox">我确认用这段文字替换当前计划</label><button data-go>应用到计划</button></div>`;
-    c.querySelector("[data-a]").onclick=async()=>{await api("/api/decide",{key:s.key,accept:true});c.querySelector("[data-apply]").hidden=false;c.querySelector("textarea").value=$("#plan").textContent;toast("已接受，可以改写计划了")};
+    c.querySelector("[data-a]").onclick=async()=>{await api("/api/decide",{key:s.key,accept:true});c.querySelector("[data-apply]").hidden=false;c.querySelector("textarea").value=s.recommendation.plan_text||$("#plan").textContent;toast("已接受，可以改写计划了")};
     c.querySelector("[data-r]").onclick=async()=>{await api("/api/decide",{key:s.key,accept:false});loadSuggs();toast("已拒绝并留痕")};
     c.querySelector("[data-go]").onclick=async()=>{const ok=c.querySelector("[data-apply] input").checked;if(!ok){toast("需要勾选确认");return}
       try{await api("/api/apply-plan",{key:s.key,text:c.querySelector("textarea").value,confirm:true});toast("计划已更新");loadPlan();loadSuggs()}catch(e){toast(e.message)}};
     box.appendChild(c)}
+}
+const AUTO_DESC={conservative:"只观察和提醒，不提改计划；结论必须有原始数据撑腰，置信度最高 medium。",
+  balanced:"可以提改计划，但每一条都要你盖章才生效。",
+  autonomous:"安全门绿灯、有原始数据证据、置信度够、72 小时内没改过时，教练可直接改计划；你 7 天内随时能撤销。红灯/黄灯底线不变。"};
+async function loadAutonomy(){
+  const a=await api("/api/autonomy"),seg=$("#autoSeg"),cf=$("#autoConfirm");
+  seg.innerHTML=a.levels.map(l=>`<button role="radio" aria-checked="${l.level===a.level}" class="${l.level===a.level?"on":""}" data-l="${l.level}">${esc(l.label)}</button>`).join("");
+  $("#autoRules").textContent=AUTO_DESC[a.level]||"";cf.hidden=true;cf.querySelector("input").checked=false;
+  seg.querySelectorAll("button").forEach(b=>b.onclick=async()=>{const l=b.dataset.l;if(l===a.level)return;
+    if(l==="autonomous"&&!cf.querySelector("input").checked){cf.hidden=false;$("#autoRules").textContent=AUTO_DESC.autonomous;toast("先勾选下面的确认，再点一次“激进”");return}
+    try{await api("/api/autonomy",{level:l,confirm:l==="autonomous"});toast("教练权限：已切到"+b.textContent+"（新作业生效）");loadAutonomy()}catch(e){toast(e.message)}});
 }
 async function loadPlan(){const p=await api("/api/plan");$("#plan").textContent=p.current_plan||"还没有计划。"}
 
@@ -592,18 +669,89 @@ function wireForms(){
   $("#themeBtn").onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;r.dataset.theme=dark?"light":"dark";try{localStorage.setItem("theme",r.dataset.theme)}catch{}selectDay(S.day,false);drawScrub();drawRing();drawSpark()};
 }
 
+/* ---------- mini dock, how-to-read, weekly poster ---------- */
+function wireExtras(){
+  const dock=$("#miniDock");
+  new IntersectionObserver(([e])=>dock.classList.toggle("show",!e.isIntersecting&&!!S.day),{threshold:.15}).observe($(".art-wrap"));
+  dock.onclick=()=>$(".art-wrap").scrollIntoView({behavior:"smooth",block:"center"});
+  const close=e=>{if(e.target.matches(".overlay,[data-close]"))e.currentTarget.hidden=true};
+  $("#howSheet").onclick=close;$("#posterSheet").onclick=close;
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".overlay").forEach(o=>o.hidden=true)});
+  $("#howBtn").onclick=()=>{buildHow();$("#howSheet").hidden=false};
+  $("#posterBtn").onclick=()=>{buildPoster();$("#posterSheet").hidden=false};
+  $("#posterDl").onclick=downloadPoster;
+}
+function demoSvg(draw){const svg=document.createElementNS(SVGNS,"svg");svg.setAttribute("viewBox","0 0 240 92");draw(svg);return svg}
+function wave(svg,{n,amp,spread,drift,col,dash,seed=3}){
+  const N=noise1(seed);
+  for(let s=0;s<n;s++){
+    const pts=[];for(let i=0;i<=24;i++){const t=i/24;pts.push([t*240,46+(s-(n-1)/2)*spread+amp*N(t*3+s*drift)])}
+    const lead=s===Math.floor(n/2),p=el("path",{d:smoothPath(pts),fill:"none",stroke:col,"stroke-width":lead?2:.8,"stroke-opacity":lead?1:.45,"stroke-linecap":"round"},svg);
+    if(dash)p.setAttribute("stroke-dasharray","5 7");
+  }
+}
+function buildHow(){
+  const c=f=>css("--f-"+f),rows=[
+    [svg=>wave(svg,{n:7,amp:16,spread:3,drift:.03,col:c("recovery")}),"<b>收拢成束</b>：比你的常态好或持平，丝带越整齐这一项越稳。"],
+    [svg=>wave(svg,{n:7,amp:22,spread:3,drift:.55,col:c("recovery"),seed:9}),"<b>散开缠绕</b>：比常态差，偏离越大越乱。只有超出“最小有意义变化”才会散开，正常波动不会被画成紧张。"],
+    [svg=>{wave(svg,{n:5,amp:20,spread:5,drift:.2,col:c("load"),seed:5});for(const x of [80,150])el("circle",{cx:x,cy:46,r:6,fill:c("load")},svg)},"<b>负荷带与结</b>：训练越重起伏越大；每个实心结代表一段高心率区（Z4–Z5）。"],
+    [svg=>{for(let k=0;k<5;k++)el("circle",{cx:120,cy:46,r:6+k*6,fill:"none",stroke:css("--alarm"),"stroke-opacity":1-k*.18},svg)},"<b>红色同心圈</b>：那天你打卡记录了疼痛、生病或红旗信号。"],
+    [svg=>wave(svg,{n:1,amp:6,spread:0,drift:0,col:css("--art-ghost"),dash:true}),"<b>灰色虚线</b>：这一天没有该数据，不插值、不估算。"]];
+  const box=$("#howList");box.innerHTML="";
+  const legend=document.createElement("div");legend.style.gridColumn="1/-1";legend.className="small";
+  legend.innerHTML="从上到下："+Object.keys(FAM).map(f=>`<span style="color:var(--f-${f})">━ ${FAM[f].label}</span>`).join("　");box.appendChild(legend);
+  for(const [draw,text] of rows){box.appendChild(demoSvg(draw));const p=document.createElement("div");p.innerHTML=text;box.appendChild(p)}
+}
+function weekDays(){
+  const end=S.day||S.snap.week.as_of,dt=new Date(+end.slice(0,4),+end.slice(4,6)-1,+end.slice(6)),out=[];
+  for(let i=6;i>=0;i--){const d=new Date(dt);d.setDate(dt.getDate()-i);out.push(`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`)}
+  return out;
+}
+function buildPoster(){
+  const days=weekDays(),box=$("#posterBox");box.innerHTML="";
+  const acts=S.hist.activities.filter(a=>days.includes(a.date)),km=acts.reduce((s,a)=>s+(a.distance_m||0),0)/1000;
+  $("#posterSub").textContent=`${fmtDate(days[0])} – ${fmtDate(days[6])} · ${acts.length} 次运动 · ${r1(km)} km`;
+  const svg=document.createElementNS(SVGNS,"svg");svg.setAttribute("viewBox","0 0 1600 2360");svg.setAttribute("width","1600");svg.setAttribute("height","2360");svg.id="posterSvg";
+  el("rect",{width:1600,height:2360,fill:css("--paper")},svg);
+  const t=el("text",{x:80,y:130,"font-size":64,fill:css("--ink"),"font-family":css("--serif")},svg);t.textContent="一周七幅";
+  const t2=el("text",{x:80,y:190,"font-size":30,fill:css("--ink-3"),"font-family":css("--sans")},svg);t2.textContent=$("#posterSub").textContent;
+  days.forEach((d,i)=>{
+    const g=el("g",{transform:`translate(80 ${250+i*290})`},svg);
+    const inner=document.createElementNS(SVGNS,"svg");
+    for(const [k,v] of Object.entries({viewBox:"0 0 1600 700",width:1300,height:260,x:140,preserveAspectRatio:"none"}))inner.setAttribute(k,v);
+    paintDay(inner,d,{bg:true});g.appendChild(inner);
+    const a=el("text",{x:0,y:120,"font-size":34,fill:css("--ink"),"font-family":css("--serif")},g);a.textContent=`${+d.slice(4,6)}.${+d.slice(6)}`;
+    const b=el("text",{x:0,y:165,"font-size":26,fill:css("--ink-3"),"font-family":css("--sans")},g);b.textContent="周"+wk(d);
+    const act=S.hist.activities.filter(x=>x.date===d);
+    if(act.length){const c=el("text",{x:0,y:205,"font-size":22,fill:css("--f-load"),"font-family":css("--sans")},g);c.textContent=act.map(x=>x.type).join(" ")}
+  });
+  const f=el("text",{x:80,y:2310,"font-size":22,fill:css("--ink-3"),"font-family":css("--sans")},svg);f.textContent="Sports Eval Core · 由身体数据确定性生成，参照个人 28 日常态";
+  box.appendChild(svg);
+}
+function downloadPoster(){
+  const svg=$("#posterSvg");if(!svg)return;
+  const xml=new XMLSerializer().serializeToString(svg),img=new Image(),url=URL.createObjectURL(new Blob([xml],{type:"image/svg+xml;charset=utf-8"}));
+  img.onload=()=>{const c=document.createElement("canvas");c.width=1600;c.height=2360;c.getContext("2d").drawImage(img,0,0);URL.revokeObjectURL(url);
+    c.toBlob(b=>{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`week-${weekDays()[0]}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)},"image/png")};
+  img.src=url;
+}
+
 /* ---------- boot ---------- */
 async function refresh(animate=true){
-  [S.snap,S.hist]=await Promise.all([api("/api/snapshot"),api("/api/history")]);
+  [S.snap,S.view]=await Promise.all([api("/api/snapshot"),api("/api/daily")]);
+  S.dayIdx=Object.fromEntries(S.view.days.map(d=>[d.date,d]));
+  S.hist={daily:S.view.days.filter(d=>Object.values(d.metrics||{}).some(m=>m.value!=null)||d.load?.value!=null).map(d=>{const r={date:d.date};for(const [k,m] of Object.entries(d.metrics||{}))if(m.value!=null)r[k]=m.value;if(d.load?.value!=null)r.training_load=d.load.value;return r}),
+    activities:S.view.days.flatMap(d=>d.activities||[]),events:S.view.days.flatMap(d=>d.events||[])};
   const st=S.snap.status;$("#ws").textContent=`${st.days} 天 · ${st.activities} 次运动`;
   if(!S.hist.daily.length){$("#dayTitle").textContent="还没有数据";$("#caption").innerHTML='把手表导出的文件拖到右侧「导入」，或 <button id="demoBtn">载入 8 周合成示例</button>';
     $("#demoBtn").onclick=async()=>{await api("/api/demo",{});refresh()};return}
   drawRing();drawChips();drawAxes();drawScrub();
   selectDay(S.day&&S.hist.daily.some(r=>r.date===S.day)?S.day:S.snap.week.as_of,animate);
-  loadSuggs();loadPlan();
+  loadSuggs();loadPlan();loadAutonomy();
+  try{if(!localStorage.getItem("readHow")){localStorage.setItem("readHow","1");buildHow();$("#howSheet").hidden=false}}catch{}
 }
 try{const t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch{}
-wireForms();
+wireForms();wireExtras();
 refresh().then(loadJobs).catch(e=>{$("#dayTitle").textContent="连接本机服务失败";$("#caption").textContent=e.message});
 setInterval(()=>loadJobs().catch(()=>{}),8000);
 </script>

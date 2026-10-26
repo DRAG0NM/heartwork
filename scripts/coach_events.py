@@ -59,7 +59,8 @@ def log_event(base, event):
     record = {"type": kind}
     now = datetime.now()
     record["date"] = store.compact_date(event.get("date") or now)
-    for key, low, high in (("pain", 0, 10), ("rpe", 0, 10), ("subjective_recovery", 1, 10)):
+    for key, low, high in (("pain", 0, 10), ("rpe", 0, 10), ("subjective_recovery", 1, 10),
+                      ("duration_min", 0, 600)):
         value = _number(event, key, low, high)
         if value is not None:
             record[key] = value

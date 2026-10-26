@@ -134,7 +134,8 @@ def render_report(payload):
         lines.append("- 单调性/应变：负荷全零、完全相同或输入不足，不计算")
     lines.append("- 这些负荷指标只描述变化，不提供通用安全区，也不能单独决定增减量。")
 
-    state = multidomain_state(all_daily, week["mon"], week["as_of"])
+    state = multidomain_state(all_daily, week["mon"], week["as_of"],
+                              payload.get("load_history"))
     lines.extend(["", "## 多维个人状态（实验）", "",
                   "| 维度 | 个人相对指数 | 可靠度 | 状态 |", "|---|---:|---:|---|"])
     for axis in state["axes"]:
