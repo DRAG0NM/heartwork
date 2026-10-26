@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:sports-eval-core:schema:coach-context:2",
+  "$id": "urn:heartwork:schema:coach-context:2",
   "title": "Model-neutral coach context v2",
   "type": "object",
   "required": ["kind", "schema_version", "task", "as_of", "policy", "views", "recent_events", "safety_gate", "content_sha256", "context_metrics"],

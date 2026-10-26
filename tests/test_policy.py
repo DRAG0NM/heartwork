@@ -21,7 +21,7 @@ import coach_decisions as D
 import coach_policy as P
 import coach_runtime as R
 import mcp_server
-import sec
+import heartwork
 import store
 import web
 from coach_core import resolve_pointer, validate_response
@@ -96,10 +96,10 @@ class TestLevels(Base):
 
     def test_cli_autonomy(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(sec.main(["--home", self.base, "autonomy", "autonomous"]), 1)
-            self.assertEqual(sec.main(["--home", self.base, "autonomy", "autonomous", "--confirm"]), 0)
+            self.assertEqual(heartwork.main(["--home", self.base, "autonomy", "autonomous"]), 1)
+            self.assertEqual(heartwork.main(["--home", self.base, "autonomy", "autonomous", "--confirm"]), 0)
             self.assertEqual(P.get_level(self.base), "autonomous")
-            self.assertEqual(sec.main(["--home", self.base, "autonomy", "conservative"]), 0)
+            self.assertEqual(heartwork.main(["--home", self.base, "autonomy", "conservative"]), 0)
 
     def test_policy_is_in_context_and_instructions(self):
         for level in P.LEVELS:

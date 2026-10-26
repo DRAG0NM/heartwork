@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:sports-eval-core:schema:coach-response:2",
+  "$id": "urn:heartwork:schema:coach-response:2",
   "title": "Evidence-bound coach response v2",
   "type": "object",
   "required": [

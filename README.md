@@ -67,7 +67,7 @@ Heartwork 不内置模型，而是给你选用的 AI 定下一套必须遵守的
 
 ## 数据留在本机
 
-- 工作区默认在 `~/.sports-eval`，和代码仓库分开存放。
+- 工作区默认在 `~/.heartwork`，和代码仓库分开存放。
 - 网页只监听 `127.0.0.1`，会校验请求来源，不加载任何外部资源。
 - 零第三方依赖，不含任何厂商账号或数据抓取接口。
 - 每个导入的文件都记在 `imports.json` 里，包括文件名、SHA-256 和写入的条数。
@@ -77,15 +77,15 @@ Heartwork 不内置模型，而是给你选用的 AI 定下一套必须遵守的
 需要 Python 3.9 或更高版本。在仓库根目录运行：
 
 ```bash
-python scripts/sec.py init --demo   # 载入 8 周合成数据
-python scripts/sec.py web           # 打开 http://127.0.0.1:8765
+python scripts/heartwork.py init --demo   # 载入 8 周合成数据
+python scripts/heartwork.py web           # 打开 http://127.0.0.1:8765
 ```
 
 要用自己的数据，就去掉 `--demo` 初始化一个空工作区，然后把文件拖进网页的「导入」区域，或者用命令行导入：
 
 ```bash
-python scripts/sec.py import ~/Downloads/activities/ export.zip daily.csv
-python scripts/sec.py profile --hr-max 188 --hr-rest 48   # 填写最大心率后才会计算心率区间
+python scripts/heartwork.py import ~/Downloads/activities/ export.zip daily.csv
+python scripts/heartwork.py profile --hr-max 188 --hr-rest 48   # 填写最大心率后才会计算心率区间
 ```
 
 | 格式 | 读取内容 |
@@ -100,9 +100,9 @@ Apple Health 记录的 HRV 是 SDNN，和 Heartwork 使用的 RMSSD 口径不同
 ## 接入 AI
 
 ```bash
-claude mcp add heartwork -- python scripts/sec.py mcp        # Claude Code
-codex mcp add heartwork -- python scripts/sec.py mcp         # Codex
-gemini mcp add heartwork python scripts/sec.py mcp           # Gemini CLI
+claude mcp add heartwork -- python scripts/heartwork.py mcp        # Claude Code
+codex mcp add heartwork -- python scripts/heartwork.py mcp         # Codex
+gemini mcp add heartwork python scripts/heartwork.py mcp           # Gemini CLI
 ```
 
 Claude Desktop、DeepSeek Harness、ChatGPT 的配置方法见 [integrations/](integrations/)。接入后可以直接提问，例如「今天适合训练吗」。AI 会先调用 `start_coach_job` 获取上下文，再调用 `submit_coach_response` 提交回答；通过核验的回答会同步显示在网页里。
@@ -119,7 +119,7 @@ Claude Desktop、DeepSeek Harness、ChatGPT 的配置方法见 [integrations/](i
 8 项专项技能（恢复、疼痛、跑步、计划、睡眠、减重、体态、复盘）可以装进 agent 的技能目录：
 
 ```bash
-python scripts/sec.py install-skills --target claude   # 也支持 dsh / agents / gemini
+python scripts/heartwork.py install-skills --target claude   # 也支持 dsh / agents / gemini
 ```
 
 不支持 MCP 的 AI（网页版 ChatGPT、Gemini、DeepSeek 等）也能用：在网页里提问，复制提示词发给 AI，再把它的回复粘贴回来做核验。
@@ -127,18 +127,18 @@ python scripts/sec.py install-skills --target claude   # 也支持 dsh / agents 
 ## 命令
 
 ```bash
-python scripts/sec.py status                          # 工作区概况
-python scripts/sec.py checkin --type morning_checkin --recovery 6 --pain 2 --note "右小腿紧"
-python scripts/sec.py report                          # 生成本周 Obsidian 周报告
-python scripts/sec.py suggestions                     # 待确认的建议
-python scripts/sec.py decide <key> --accept
-python scripts/sec.py plan-apply <key> --text "周四间歇改为轻松跑" --confirm
-python scripts/sec.py autonomy autonomous --confirm   # 授权档位：conservative / balanced / autonomous
-python scripts/sec.py undo <key>                      # 撤销一次自动调整
-python scripts/sec.py eval                            # 行为评测
+python scripts/heartwork.py status                          # 工作区概况
+python scripts/heartwork.py checkin --type morning_checkin --recovery 6 --pain 2 --note "右小腿紧"
+python scripts/heartwork.py report                          # 生成本周 Obsidian 周报告
+python scripts/heartwork.py suggestions                     # 待确认的建议
+python scripts/heartwork.py decide <key> --accept
+python scripts/heartwork.py plan-apply <key> --text "周四间歇改为轻松跑" --confirm
+python scripts/heartwork.py autonomy autonomous --confirm   # 授权档位：conservative / balanced / autonomous
+python scripts/heartwork.py undo <key>                      # 撤销一次自动调整
+python scripts/heartwork.py eval                            # 行为评测
 ```
 
-所有命令都可以用 `--home <目录>` 或环境变量 `SPORTS_EVAL_HOME` 指定工作区。
+所有命令都可以用 `--home <目录>` 或环境变量 `HEARTWORK_HOME` 指定工作区。
 
 ## 适用范围
 

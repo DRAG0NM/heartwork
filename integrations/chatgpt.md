@@ -2,9 +2,9 @@
 
 网页版 ChatGPT 只能连接**远程** MCP 服务器，不能直接启动本机 stdio 进程，所以本机数据有三条路：
 
-1. 推荐：网页 GUI 的“复制给任意 AI”模式。运行 `python scripts/sec.py web`，在教练页生成作业，一键复制提示词和 context 贴进 ChatGPT，再把它的 JSON 回复贴回页面验证。数据只在你复制的内容里出本机，且你能看到发送了什么。
+1. 推荐：网页 GUI 的“复制给任意 AI”模式。运行 `python scripts/heartwork.py web`，在教练页生成作业，一键复制提示词和 context 贴进 ChatGPT，再把它的 JSON 回复贴回页面验证。数据只在你复制的内容里出本机，且你能看到发送了什么。
 2. ChatGPT 桌面端/Codex 等支持本机 MCP 的客户端：见 `codex.md`。
-3. 高级：`python scripts/sec.py mcp --http 127.0.0.1:8766` 提供 `POST http://127.0.0.1:8766/mcp`（streamable HTTP，仅绑定 127.0.0.1），再用隧道工具暴露成 https 地址并在 ChatGPT 的自定义连接器里填写。
+3. 高级：`python scripts/heartwork.py mcp --http 127.0.0.1:8766` 提供 `POST http://127.0.0.1:8766/mcp`（streamable HTTP，仅绑定 127.0.0.1），再用隧道工具暴露成 https 地址并在 ChatGPT 的自定义连接器里填写。
 
 风险（走第 3 条前请确认）：
 

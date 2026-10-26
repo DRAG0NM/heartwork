@@ -7,19 +7,19 @@
   "mcpServers": {
     "heartwork": {
       "command": "python",
-      "args": ["scripts/sec.py", "mcp"],
+      "args": ["scripts/heartwork.py", "mcp"],
       "cwd": "<你的克隆路径>"
     }
   }
 }
 ```
 
-也可用命令：`gemini mcp add heartwork python scripts/sec.py mcp`（在仓库根目录）。
+也可用命令：`gemini mcp add heartwork python scripts/heartwork.py mcp`（在仓库根目录）。
 
 上下文与技能：在目标项目根目录运行
 
 ```
-python <你的克隆路径>/scripts/sec.py install-skills --target gemini
+python <你的克隆路径>/scripts/heartwork.py install-skills --target gemini
 ```
 
 它把 `coach-*` 复制到 `.gemini/skills/`，并在 `GEMINI.md` 里写入一段用 `@./.gemini/skills/<name>/SKILL.md` 引用技能的标记块（重复运行只会替换该块，不动你的其他内容）。`@file` 导入是 Gemini CLI 的 GEMINI.md 导入语法；该做法与你所用版本的兼容性未在此验证，若版本不支持，可直接让 Gemini 读 `AGENTS.md`。

@@ -15,9 +15,9 @@ from test_coach_runtime import good_response
 
 class McpClient:
     def __init__(self, home):
-        env = dict(os.environ, SPORTS_EVAL_HOME=home, PYTHONIOENCODING="utf-8")
+        env = dict(os.environ, HEARTWORK_HOME=home, PYTHONIOENCODING="utf-8")
         self.proc = subprocess.Popen(
-            [sys.executable, os.path.join(ROOT, "scripts", "sec.py"), "mcp"],
+            [sys.executable, os.path.join(ROOT, "scripts", "heartwork.py"), "mcp"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         self.next_id = 0
 
@@ -46,7 +46,7 @@ class McpClient:
 class McpServerTest(unittest.TestCase):
     def test_stdio_end_to_end(self):
         with tempfile.TemporaryDirectory() as home:
-            subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "sec.py"),
+            subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "heartwork.py"),
                             "--home", home, "init", "--demo"], check=True,
                            stdout=subprocess.DEVNULL)
             client = McpClient(home)

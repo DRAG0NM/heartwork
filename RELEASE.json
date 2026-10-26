@@ -1,6 +1,6 @@
 {
-  "name": "sports-eval-core",
-  "version": "0.4.0",
+  "name": "heartwork",
+  "version": "0.4.1",
   "released_on": "2026-10-26",
   "runtime": "Python 3.9+ standard library",
   "data_policy": "synthetic_examples_only",

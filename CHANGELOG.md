@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.1 · 2026-10-26
+
+- 项目更名为 Heartwork 健康画布，仓库改名为 `heartwork`。
+- 命令行改为 `scripts/heartwork.py`；`scripts/sec.py` 保留为别名，已有的 MCP 配置无需修改。
+- 工作区默认改为 `~/.heartwork`，环境变量改为 `HEARTWORK_HOME`；已存在的 `~/.sports-eval` 和 `SPORTS_EVAL_HOME` 继续生效。
+- README 重写。
+
 ## v0.4 · 2026-10-26
 
 - 统一个人基线（`scripts/baseline.py`）：近 7 天对比再往前 28 天（不重叠）的滚动窗口，MAD 稳健尺度，SWC 判定高/低/正常；HRV 用 lnRMSSD。网页不再自己算基线，改用 `/api/daily`。

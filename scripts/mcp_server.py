@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stdlib MCP server (stdio, optional local streamable HTTP) over the sports-eval facade.
+"""Stdlib MCP server (stdio, optional local streamable HTTP) over the heartwork facade.
 
 decide / apply_plan / set_autonomy / undo are deliberately not exposed: only a human confirms
 plan changes, raises the coach's autonomy or reverts an automatic change.
@@ -19,7 +19,7 @@ import coach_runtime  # noqa: E402
 import coach_skills  # noqa: E402
 
 DEFAULT_PROTOCOL = "2025-06-18"
-CONFIRM_HINT = "计划变更需要用户本人确认：请在网页（sec.py web）或 CLI（sec.py decide / plan-apply）中操作。"
+CONFIRM_HINT = "计划变更需要用户本人确认：请在网页（heartwork.py web）或 CLI（heartwork.py decide / plan-apply）中操作。"
 
 
 def _schema(properties=None, required=None):
@@ -71,7 +71,7 @@ class RpcError(Exception):
 
 
 def log(text):
-    print("[sports-eval-mcp] %s" % text, file=sys.stderr, flush=True)
+    print("[heartwork-mcp] %s" % text, file=sys.stderr, flush=True)
 
 
 class Server:
@@ -100,7 +100,7 @@ class Server:
             if result["suggestions"]:
                 result["note"] = CONFIRM_HINT
             if result.get("auto_applied"):
-                result["note"] = "部分计划已按激进档自动应用；用户可在 7 天内于网页或 CLI（sec.py undo）撤销。"
+                result["note"] = "部分计划已按激进档自动应用；用户可在 7 天内于网页或 CLI（heartwork.py undo）撤销。"
             return result
         if name == "list_pending_suggestions":
             return {"suggestions": api.pending_suggestions(home), "note": CONFIRM_HINT}
@@ -129,7 +129,7 @@ class Server:
             return {"protocolVersion": params.get("protocolVersion") or DEFAULT_PROTOCOL,
                     "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False},
                                      "resources": {"listChanged": False}},
-                    "serverInfo": {"name": "sports-eval-core", "version": "0.4.0"},
+                    "serverInfo": {"name": "heartwork", "version": "0.4.1"},
                     "instructions": "先 start_coach_job，按 instructions 只输出 Response v2 JSON，再 "
                                     "submit_coach_response。计划变更需用户在网页或 CLI 确认。"}
         if method == "ping":
@@ -252,7 +252,7 @@ def main(argv=None):
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
-    parser = argparse.ArgumentParser(prog="mcp_server", description="sports-eval-core MCP server")
+    parser = argparse.ArgumentParser(prog="mcp_server", description="heartwork MCP server")
     parser.add_argument("--home", default=None)
     parser.add_argument("--http", metavar="127.0.0.1:PORT")
     args = parser.parse_args(argv)

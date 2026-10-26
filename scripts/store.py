@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Local workspace: the single place imported data, events, plans and jobs live.
 
-The workspace sits outside the repository (default ``~/.sports-eval``, or
-``SPORTS_EVAL_HOME``) so real data can never be committed by accident.
+The workspace sits outside the repository (default ``~/.heartwork``, or
+``HEARTWORK_HOME``; an existing ``~/.sports-eval`` and ``SPORTS_EVAL_HOME``
+are still honoured) so real data can never be committed by accident.
 Everything downstream (reports, coach context, MCP, web) reads the standard
 weekly input assembled by :func:`weekly_input`.
 """
@@ -27,8 +28,12 @@ HISTORY_DAYS = 42
 
 
 def home(path=None):
-    path = path or os.environ.get("SPORTS_EVAL_HOME") or os.path.join(
-        os.path.expanduser("~"), ".sports-eval")
+    path = path or os.environ.get("HEARTWORK_HOME") or os.environ.get("SPORTS_EVAL_HOME")
+    if not path:
+        legacy = os.path.join(os.path.expanduser("~"), ".sports-eval")
+        path = os.path.join(os.path.expanduser("~"), ".heartwork")
+        if not os.path.exists(path) and os.path.isdir(legacy):
+            path = legacy
     return os.path.abspath(path)
 
 
