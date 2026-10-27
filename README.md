@@ -45,8 +45,6 @@ Heartwork 读取手表和健康应用的数据，在本机把每一项指标放�
 
 在逐项对比常态之外，Heartwork 在本机计算一组身体判断。它们全部由确定性算法得出，方法来自已发表的研究，并作为证据提供给教练。
 
-<img src="docs/images/body-light.jpg" alt="身体判断面板：展开的比赛预测，含临界速度与各距离预测成绩" width="36%" align="right">
-
 | 判断 | 方法 |
 |---|---|
 | 异常预警 | 夜间静息心率升高、HRV 下降，连续两晚出现即提示；最高级时安全门自动转黄 |
@@ -59,7 +57,12 @@ Heartwork 读取手表和健康应用的数据，在本机把每一项指标放�
 | 习惯影响 | 饮酒、咖啡、晚餐等标签对次日恢复的影响，附置信区间 |
 | 计划完成 | 对比日历上的计划课与实际训练 |
 
-<br clear="right">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/body-dark.jpg">
+    <img src="docs/images/body-light.jpg" alt="身体判断面板：展开的比赛预测，含临界速度与各距离预测成绩" width="440">
+  </picture>
+</p>
 
 每天早上，这些判断与安全门汇总成「今日一件事」，可推送为桌面通知。这一步不调用任何模型。
 
