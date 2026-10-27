@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
-"""Model API client: OpenAI-compatible chat completions plus Anthropic Messages, stdlib only.
+"""Model client: OpenAI-compatible chat, Anthropic Messages, or a subscription CLI; stdlib only.
 
 Settings live in the workspace (`llm.json`), never in the repository. The key is
-never returned to any surface; callers only see whether one is set.
+never returned to any surface; callers only see whether one is set. The CLI
+protocols run `claude -p` or `codex exec` with tools disabled, so an existing
+Claude or ChatGPT subscription answers without an API key.
 """
 
 from __future__ import annotations
 
+import glob
 import http.client
 import json
 import os
+import shutil
+import subprocess
+import tempfile
+import threading
 import urllib.error
 import urllib.request
 
@@ -30,12 +37,32 @@ PRESETS = {
              "key_env": "DASHSCOPE_API_KEY", "local": False},
     "ollama": {"label": "Ollama（本机）", "protocol": "openai", "base_url": "http://127.0.0.1:11434/v1",
                "model": "qwen3:8b", "key_env": "", "local": True},
+    "claude-cli": {"label": "Claude 订阅（Claude Code）", "protocol": "claude-cli", "base_url": "",
+                   "model": "", "key_env": "", "local": False},
+    "codex-cli": {"label": "ChatGPT 订阅（Codex CLI）", "protocol": "codex-cli", "base_url": "",
+                  "model": "", "key_env": "", "local": False},
     "custom": {"label": "自定义兼容接口", "protocol": "openai", "base_url": "", "model": "",
                "key_env": "", "local": False},
 }
 FIELDS = ("provider", "protocol", "base_url", "model", "api_key", "temperature", "max_attempts",
           "json_mode")
 TIMEOUT = 180
+CLI_PROTOCOLS = ("claude-cli", "codex-cli")
+
+
+def find_cli(protocol, configured=""):
+    """The CLI executable: the configured path, PATH, or Claude desktop's bundled claude.exe."""
+    if configured and os.path.isfile(configured):
+        return configured
+    name = "claude" if protocol == "claude-cli" else "codex"
+    found = shutil.which(name)
+    if found:
+        return found
+    if protocol == "claude-cli" and os.environ.get("APPDATA"):
+        bundled = glob.glob(os.path.join(os.environ["APPDATA"], "Claude", "claude-code", "*", "*", "claude.exe"))
+        if bundled:
+            return max(bundled, key=os.path.getmtime)
+    return ""
 
 
 class LLMError(RuntimeError):
@@ -65,8 +92,13 @@ def public(base=None):
     key = cfg.pop("api_key")
     preset = PRESETS.get(cfg["provider"], PRESETS["custom"])
     local = preset["local"] or cfg["base_url"].startswith(("http://127.0.0.1", "http://localhost"))
+    ready = bool(cfg["model"] and cfg["base_url"] and (key or local))
+    if cfg["protocol"] in CLI_PROTOCOLS:
+        command = find_cli(cfg["protocol"], cfg["base_url"])
+        cfg["command"] = command
+        ready = bool(command)
     cfg.update({"key_set": bool(key), "key_hint": ("…" + key[-4:]) if len(key) >= 8 else "",
-                "local": local, "ready": bool(cfg["model"] and cfg["base_url"] and (key or local))})
+                "local": local, "ready": ready})
     return {"config": cfg, "presets": [dict(name=name, **{k: v for k, v in spec.items()})
                                        for name, spec in PRESETS.items()]}
 
@@ -86,8 +118,8 @@ def save(base, fields):
     for key, value in fields.items():
         if key == "api_key" and not value:
             continue  # blank key field in a form means "keep the current one"
-        if key == "protocol" and value not in ("openai", "anthropic"):
-            raise ValueError("protocol must be openai or anthropic")
+        if key == "protocol" and value not in ("openai", "anthropic") + CLI_PROTOCOLS:
+            raise ValueError("protocol must be openai, anthropic, claude-cli or codex-cli")
         if key == "max_attempts":
             value = max(1, min(6, int(value)))
         if key == "temperature":
@@ -191,6 +223,115 @@ def _anthropic(cfg, system, messages, on_delta, usage):
     return "".join(parts)
 
 
+def _transcript(messages):
+    """CLIs take one prompt: earlier turns become a labelled transcript."""
+    if len(messages) == 1:
+        return messages[0]["content"]
+    parts = []
+    for message in messages:
+        role = "用户" if message["role"] == "user" else "你上一次的回答"
+        parts.append("### %s\n%s" % (role, message["content"]))
+    return "\n\n".join(parts)
+
+
+def _run_cli(argv, prompt, on_line):
+    """Run a CLI with the prompt on stdin in an empty folder; feed each stdout line to on_line."""
+    # A parent Claude Code session's variables would redirect or confuse the child CLI.
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("CLAUDE", "ANTHROPIC_BASE_URL"))}
+    name = os.path.basename(argv[0])
+    with tempfile.TemporaryDirectory(prefix="heartwork-cli-") as folder:
+        try:
+            proc = subprocess.Popen(argv, cwd=folder, env=env, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise LLMError("无法启动 %s：%s" % (name, exc)) from None
+        errors = []
+        threading.Thread(target=lambda: errors.append(proc.stderr.read()), daemon=True).start()
+        watchdog = threading.Timer(TIMEOUT, proc.kill)
+        watchdog.start()
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+            for line in proc.stdout:
+                line = line.strip()
+                if line:
+                    try:
+                        on_line(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            code = proc.wait()
+        finally:
+            watchdog.cancel()
+        if code != 0:
+            detail = (errors[0] if errors else "").strip()[:400]
+            raise LLMError("%s 超过 %d 秒没有完成，已停止；先在终端里运行一次 %s 确认已登录" % (
+                name, TIMEOUT, name) if code in (-9, 1) and not detail else
+                "%s 退出码 %d：%s" % (name, code, detail))
+
+
+def _claude_cli(cfg, system, messages, on_delta, usage):
+    command = find_cli("claude-cli", cfg["base_url"])
+    if not command:
+        raise LLMError("没找到 Claude Code（claude）；在设置里填它的路径")
+    parts, final = [], {}
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
+        handle.write(system)
+    argv = [command, "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+            "--tools", "", "--strict-mcp-config", "--no-session-persistence",
+            "--system-prompt-file", handle.name]
+    if cfg.get("model"):
+        argv += ["--model", cfg["model"]]
+
+    def on_line(event):
+        inner = event.get("event") or {}
+        delta = inner.get("delta") or {}
+        if event.get("type") == "stream_event" and delta.get("type") == "text_delta":
+            parts.append(delta["text"])
+            if on_delta:
+                on_delta("text", delta["text"])
+        elif event.get("type") == "result":
+            final.update(event)
+
+    try:
+        _run_cli(argv, _transcript(messages), on_line)
+    finally:
+        os.unlink(handle.name)
+    if final.get("is_error"):
+        raise LLMError("Claude Code：%s" % str(final.get("result"))[:400])
+    info = final.get("usage") or {}
+    cached = info.get("cache_read_input_tokens") or 0
+    usage.update(input=(info.get("input_tokens") or 0) + cached + (info.get("cache_creation_input_tokens") or 0),
+                 cached=cached, output=info.get("output_tokens"))
+    return final.get("result") or "".join(parts)
+
+
+def _codex_cli(cfg, system, messages, on_delta, usage):
+    command = find_cli("codex-cli", cfg["base_url"])
+    if not command:
+        raise LLMError("没找到 Codex CLI（codex）；先安装或在设置里填它的路径")
+    texts = []
+    argv = [command, "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only"]
+    if cfg.get("model"):
+        argv += ["-m", cfg["model"]]
+    argv.append("-")
+
+    def on_line(event):
+        item = event.get("item") or {}
+        if event.get("type") == "item.completed" and item.get("type") == "agent_message":
+            texts.append(item.get("text") or "")
+            if on_delta:
+                on_delta("text", item.get("text") or "")
+        elif event.get("type") == "turn.completed":
+            info = event.get("usage") or {}
+            usage.update(input=info.get("input_tokens"), cached=info.get("cached_input_tokens") or 0,
+                         output=info.get("output_tokens"))
+
+    _run_cli(argv, "%s\n\n---\n\n%s" % (system, _transcript(messages)), on_line)
+    return texts[-1] if texts else ""
+
+
 def chat(cfg, system, messages, on_delta=None, usage=None):
     """Stream one completion; returns the full text.
 
@@ -198,6 +339,10 @@ def chat(cfg, system, messages, on_delta=None, usage=None):
     input/cached/output token counts when the server reports them.
     """
     usage = {} if usage is None else usage
+    if cfg["protocol"] == "claude-cli":
+        return _claude_cli(cfg, system, messages, on_delta, usage)
+    if cfg["protocol"] == "codex-cli":
+        return _codex_cli(cfg, system, messages, on_delta, usage)
     if not cfg.get("model") or not cfg.get("base_url"):
         raise LLMError("还没选模型：先在设置里填好服务商和模型")
     if cfg["protocol"] == "anthropic":

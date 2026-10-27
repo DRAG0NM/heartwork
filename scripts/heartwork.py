@@ -109,6 +109,7 @@ def build_parser():
     checkin.add_argument("--illness", action="store_true")
     checkin.add_argument("--red-flag", action="append", default=[])
     checkin.add_argument("--note")
+    checkin.add_argument("--tags", help="习惯标签，逗号分隔：饮酒,咖啡,晚餐晚")
     report = commands.add_parser("report", help="生成周报告")
     report.add_argument("--as-of")
     ask = commands.add_parser("ask", help="生成教练作业")
@@ -157,6 +158,23 @@ def build_parser():
     model.add_argument("--attempts", type=int, help="核验失败后最多作答几次（1-6）")
     model.add_argument("--test", action="store_true", help="发一条消息测试连通")
     commands.add_parser("desktop", help="以桌面窗口打开（需要 pywebview）")
+    body = commands.add_parser("insights", help="身体判断：异常预警、HRV 趋势、睡眠规律、有氧与比赛预测")
+    body.add_argument("--as-of")
+    morning = commands.add_parser("brief", help="今日一件事（晨报）")
+    morning.add_argument("--as-of")
+    morning.add_argument("--notify", action="store_true", help="同时弹出桌面通知")
+    morning.add_argument("--schedule", metavar="HH:MM", help="打印每天定时推送晨报的系统命令")
+    link = commands.add_parser("intervals", help="intervals.icu：设置、同步、推送计划课")
+    link.add_argument("action", nargs="?", choices=["status", "sync", "push"], default="status")
+    link.add_argument("--api-key")
+    link.add_argument("--athlete-id")
+    link.add_argument("--days", type=int, default=60)
+    link.add_argument("--date", help="push：日期 YYYY-MM-DD")
+    link.add_argument("--name", help="push：课程名")
+    link.add_argument("--type", default="Run")
+    link.add_argument("--minutes", type=float)
+    link.add_argument("--description", default="")
+    link.add_argument("--confirm", action="store_true", help="push 必须带上：确认写入你的日历")
     web = commands.add_parser("web", help="启动本机网页（127.0.0.1）")
     web.add_argument("--port", type=int, default=8765)
     mcp = commands.add_parser("mcp", help="启动 MCP 服务")
@@ -176,7 +194,8 @@ def run(args):
     if command == "checkin":
         event = {"type": args.type, "red_flags": args.red_flag, "illness": args.illness}
         for key, value in (("date", args.date), ("pain", args.pain), ("rpe", args.rpe),
-                           ("subjective_recovery", args.recovery), ("note", args.note)):
+                           ("subjective_recovery", args.recovery), ("note", args.note),
+                           ("tags", args.tags)):
             if value is not None:
                 event[key] = value
         return _print(api.log_event(home, event))
@@ -245,6 +264,33 @@ def run(args):
                 print("连接失败：%s" % exc, file=sys.stderr)
                 return 1
         return _print(llm.public(home)["config"])
+    if command == "insights":
+        return _print(api.insights(home, args.as_of))
+    if command == "brief":
+        import brief
+        if args.schedule:
+            print("在终端运行下面这条命令，每天 %s 推送晨报：\n%s" % (
+                args.schedule, brief.schedule_command(args.schedule, home)))
+            return None
+        result = brief.build(home, args.as_of)
+        print(brief.text(result))
+        if args.notify and not brief.notify(result):
+            print("（这台电脑不支持桌面通知，已只打印）", file=sys.stderr)
+        return None
+    if command == "intervals":
+        fields = {key: value for key, value in (("api_key", args.api_key),
+                                                ("athlete_id", args.athlete_id)) if value}
+        if fields:
+            api.set_intervals(home, fields)
+        if args.action == "sync":
+            return _print(api.sync_intervals(home, args.days))
+        if args.action == "push":
+            workout = {"date": args.date, "name": args.name, "type": args.type,
+                       "description": args.description}
+            if args.minutes:
+                workout["moving_time"] = int(args.minutes * 60)
+            return _print(api.push_workout(home, workout, args.confirm))
+        return _print(api.get_intervals(home))
     if command == "desktop":
         import desktop
         return desktop.main(["--home", home] if home else [])
@@ -264,7 +310,8 @@ def main(argv=None):
             stream.reconfigure(encoding="utf-8")
     args = build_parser().parse_args(argv)
     try:
-        code = run(args)
+        with api.store.session(args.home):
+            code = run(args)
     except (ValueError, KeyError, PermissionError, FileNotFoundError) as exc:
         print("错误：%s" % exc, file=sys.stderr)
         return 1

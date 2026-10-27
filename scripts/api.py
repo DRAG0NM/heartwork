@@ -83,6 +83,11 @@ def snapshot(base=None, as_of=None):
 
 def daily_view(base=None, as_of=None, days=56):
     """Per-day metric status (rolling baseline), family status, load and activities."""
+    return store.cached(base, "daily_view|%s|%s" % (as_of or "", days),
+                        lambda: _daily_view(base, as_of, days))
+
+
+def _daily_view(base, as_of, days):
     as_of = store.compact_date(as_of) if as_of else (
         store.latest_date(base) or datetime.now().strftime("%Y%m%d"))
     last = datetime.strptime(as_of, "%Y%m%d")
@@ -126,6 +131,78 @@ def daily_view(base=None, as_of=None, days=56):
             "families": {name: {"label": baseline.FAMILY_LABELS[name], "keys": keys}
                          for name, keys in baseline.FAMILIES.items()},
             "load_summary": load_summary}
+
+
+def insights(base=None, as_of=None):
+    """Deterministic body judgments (illness signal, HRV trend, sleep regularity, race...)."""
+    as_of = store.compact_date(as_of) if as_of else (
+        store.latest_date(base) or datetime.now().strftime("%Y%m%d"))
+    return store.cached(base, "insights|%s" % as_of, lambda: _insights(base, as_of))
+
+
+def _insights(base, as_of):
+    import insights as body
+    import intervals
+    first = (datetime.strptime(as_of, "%Y%m%d") - timedelta(days=130)).strftime("%Y%m%d")
+    daily = [dict({key: value for key, value in record.items() if not key.startswith("_")}, date=day)
+             for day, record in store.load_daily(base).items() if first <= day <= as_of]
+    activities, extras, loads = store.load_details(base)
+    result = body.compute(
+        daily, [item for item in activities + extras if first <= item["date"] <= as_of],
+        [event for event in coach_events.active_events(base) if event.get("date", "") <= as_of],
+        store.load_sleep_intervals(base), {day: load for day, load in loads.items() if day <= as_of},
+        as_of, store.load_profile(base))
+    plan = intervals.compliance(base, as_of)
+    if plan.get("planned"):
+        rate = plan.get("rate") or 0
+        result["compliance"] = dict(plan, available=True, level="ok" if rate >= 0.8 else "watch",
+                                    label="近 %d 天计划完成 %d/%d" % (28, plan["done"], plan["planned"]))
+    return result
+
+
+def compact_insights(full):
+    """What the coach sees: each available section's verdict and scalar numbers, no long lists."""
+    out = {}
+    for key, section in (full or {}).items():
+        if not isinstance(section, dict) or not section.get("available"):
+            continue
+        item = {}
+        for field, value in section.items():
+            if field in ("available", "nights", "midpoints", "by_week", "missed"):
+                continue
+            if isinstance(value, dict):
+                value = {k: v for k, v in value.items() if not isinstance(v, (dict, list))} or None
+            elif isinstance(value, list):
+                value = [entry for entry in value if not isinstance(entry, dict)][:6] or (
+                    [{k: v for k, v in entry.items() if not isinstance(v, (dict, list))}
+                     for entry in value if isinstance(entry, dict)][:3] or None)
+            if value is not None:
+                item[field] = value
+        out[key] = item
+    return out
+
+
+def sync_intervals(base, days=60):
+    import intervals
+    store.init(base)
+    return intervals.sync(base, days)
+
+
+def get_intervals(base=None):
+    import intervals
+    return intervals.public(base)
+
+
+def set_intervals(base, fields):
+    import intervals
+    store.init(base)
+    return intervals.save(base, fields)
+
+
+def push_workout(base, workout, confirm=False):
+    """Human surfaces only (web/CLI): writes to the athlete's intervals.icu calendar."""
+    import intervals
+    return intervals.push_workout(base, workout, confirm)
 
 
 def start_job(base, query, task=None, as_of=None):
@@ -198,6 +275,11 @@ def set_profile(base, fields):
     if unknown:
         raise ValueError("unsupported profile fields: %s" % ", ".join(unknown))
     store.init(base)
+    with store.transaction(base):
+        return _set_profile(base, fields)
+
+
+def _set_profile(base, fields):
     profile = store.load_profile(base)
     for key, value in fields.items():
         if key in ("hr_max", "hr_rest"):

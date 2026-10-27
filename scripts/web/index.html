@@ -130,6 +130,18 @@ aside h3:first-child{margin-top:0}
 .loadsum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px;padding:10px 8px 0;border-top:1px solid var(--line)}
 .loadsum div{font-size:11px;color:var(--ink-3)}
 .loadsum b{display:block;font-family:var(--serif);font-size:16px;font-weight:400;color:var(--ink);font-variant-numeric:tabular-nums}
+.onething{margin:-6px 0 14px;font-size:14px;color:var(--ink-2)}
+.onething b{font-weight:500;color:var(--ink)}
+.body{display:grid;gap:1px}
+.bsec{border:0;background:none;width:100%;text-align:left;padding:7px 8px;border-radius:6px;display:grid;grid-template-columns:7px 72px minmax(0,1fr);gap:10px;align-items:baseline;font-size:13px;color:var(--ink)}
+.bsec:hover{background:var(--paper)}
+.bsec .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);transform:translateY(-1px)}
+.bsec.ok .dot{background:var(--good)}.bsec.watch .dot{background:var(--strain)}.bsec.alert .dot{background:var(--alarm)}
+.bsec .t{color:var(--ink-3);font-size:12px}
+.bsec .l{white-space:normal}
+.bsec.off{opacity:.5}
+.bdet{grid-column:1/-1;margin:4px 0 2px 17px;font-size:12px;color:var(--ink-2);display:grid;grid-template-columns:auto 1fr;gap:2px 12px}
+.bdet span:nth-child(odd){color:var(--ink-3)}
 .sugg .act-text{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
 .sugg .act-text.open{display:block}
 .chip{border-radius:8px;padding:4px 9px;font-size:12.5px;border:1px solid transparent;cursor:pointer;line-height:1.35;text-align:left}
@@ -203,6 +215,7 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
   <p class="eyebrow" id="eyebrow">—</p>
   <h1 class="day" id="dayTitle">正在读取你的数据…</h1>
   <p class="caption" id="caption"></p>
+  <p class="onething" id="oneThing" hidden></p>
   <div class="art-wrap">
     <svg id="art" viewBox="0 0 1600 700" preserveAspectRatio="xMidYMid slice" role="img" aria-label="由当日身体数据生成的画"></svg>
     <div class="legend" id="legend"></div>
@@ -239,6 +252,9 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
   <h3>聚焦 · 相对你自己的 28 日常态</h3>
   <div class="chips" id="chips"></div>
 
+  <h3>身体判断 · 确定性计算，点开看依据</h3>
+  <div class="body" id="body"><p class="small muted">计算中…</p></div>
+
   <h3 id="exploreTitle">探索</h3>
   <svg id="spark" viewBox="0 0 316 120" width="100%" aria-label="指标趋势"></svg>
   <p class="small muted" style="margin:4px 0 0">灰带是所选那天的常态区间（再往前 28 天的中位数 ± 最小有意义变化）；落在带内就是正常波动。</p>
@@ -254,6 +270,12 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
     <label>API Key <span class="muted" id="keyHint"></span><input name="api_key" type="password" autocomplete="off" placeholder="留空保持不变；也可用环境变量"></label>
     <p class="keynote" id="cloudNote" hidden>云端模型会收到本次作业的 coach_context（近期指标、打卡、计划）。只想留在本机，选 Ollama。</p>
     <div class="row"><button type="submit">保存</button><button type="button" id="llmTest">测试连接</button><span class="small muted" id="llmState"></span></div>
+  </form>
+
+  <h3>intervals.icu 同步</h3>
+  <form class="form" id="icuForm">
+    <div class="two"><label>运动员 ID<input name="athlete_id" autocomplete="off" placeholder="0 = 自己"></label><label>API Key <span class="muted" id="icuHint"></span><input name="api_key" type="password" autocomplete="off" placeholder="设置页底部"></label></div>
+    <div class="row"><button type="submit">保存</button><button type="button" id="icuSync">同步最近 60 天</button><span class="small muted" id="icuState"></span></div>
   </form>
 
   <h3>教练权限</h3>
@@ -279,6 +301,7 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
     <details><summary>红旗信号（任一会触发红灯）</summary>
       <div class="form" style="margin-top:6px" id="flags"></div>
     </details>
+    <label>习惯标签（逗号分隔，用来算对恢复的影响）<input name="tags" maxlength="120" placeholder="饮酒, 咖啡, 晚餐晚, 出差"></label>
     <label>备注<input name="note" maxlength="1000" placeholder="右小腿有点紧"></label>
     <button type="submit">记一笔</button>
   </form>
@@ -687,6 +710,33 @@ async function loadLLM(){
   $("#keyHint").textContent=c.key_set?`已设置 ${c.key_hint}`:c.local?"本机模型可不填":"未设置";
   $("#cloudNote").hidden=c.local;$("#llmState").textContent=c.ready?"就绪":"未就绪";S.llmReady=c.ready;
 }
+const BODY_TITLE={illness:"异常预警",hrv:"HRV 趋势",trend:"训练适应",sleep_regularity:"睡眠规律",weight:"体重趋势",aerobic:"有氧耐久",race:"比赛预测",habits:"习惯影响",compliance:"计划完成"};
+const BODY_FIELD={cv7:"7 日波动 CV",cv_typical:"常见 CV",baseline7_ms:"7 日基线 ms",range_ms:"60 日正常范围",normalized_hrv:"归一化 HRV",acwr:"急慢比",tsb:"TSB",rhr_delta:"静息心率较常态",sri:"睡眠规律指数",social_jetlag_h:"社交时差 h",mean_midpoint:"睡眠中点",trend_kg:"趋势体重",week_change_pct:"周变化 %",consecutive_flagged:"连续异常晚数",rate:"完成率",done:"完成",planned:"计划"};
+function bodyDetail(key,s){
+  const rows=[];
+  for(const [k,label] of Object.entries(BODY_FIELD))if(s[k]!=null&&typeof s[k]!=="object")rows.push([label,k==="normalized_hrv"?(s[k]*100).toFixed(1)+"%":typeof s[k]==="number"?r1(s[k]):s[k]]);
+  if(key==="hrv"&&s.range_ms)rows.push(["60 日正常范围",s.range_ms.map(r1).join(" – ")+" ms"]);
+  if(key==="trend"&&s.basis&&s.basis.length)rows.push(["依据",s.basis.join("；")]);
+  if(key==="aerobic"){if(s.same_pace)rows.push(["同配速心率",`${r1(s.same_pace.recent)} vs ${r1(s.same_pace.prior)}（${s.same_pace.ref_pace||""}）`]);if(s.ef)rows.push(["效率因子 EF",`${s.ef.recent} vs ${s.ef.prior}`]);if(s.long_run)rows.push(["长距离解耦",`${s.long_run.decoupling_pct}% · ${s.long_run.label}`])}
+  if(key==="race"){const c=s.critical_speed;if(c)rows.push(["临界速度",`${c.cs_pace}/km · D′ ${Math.round(c.dprime_m)} m`],["马拉松配速",c.marathon_pace],["半马配速上限",c.half_pace_ceiling]);
+    const rg=s.riegel;if(rg)for(const [n,p] of Object.entries(rg.predictions||{}))rows.push(["预测 "+({"5k":"5 公里","10k":"10 公里",half:"半马",marathon:"全马"})[n],p.time]);if(s.vdot)rows.push(["VDOT",r1(s.vdot.value)])}
+  if(key==="habits")for(const it of (s.items||[]).slice(0,4))rows.push([it.title||it.tag,`${it.diff>0?"+":""}${r1(it.diff)}（95% 区间 ${r1(it.ci_low)}~${r1(it.ci_high)}，${it.n_tag} 次）`]);
+  if(key==="illness")for(const n of (s.nights||[]).slice(0,3))rows.push([fmtDate(n.date),`静息心率 ${n.rhr??"—"}（z ${n.rhr_z??"—"}）· HRV ${n.hrv_ms??"—"}（z ${n.hrv_z??"—"}）`]);
+  return rows.map(([a,b])=>`<span>${esc(a)}</span><span>${esc(String(b))}</span>`).join("");
+}
+async function loadBody(){
+  const asOf=S.snap&&S.snap.week.as_of,[b,br]=await Promise.all([api("/api/insights"+(asOf?"?as_of="+asOf:"")),api("/api/brief"+(asOf?"?as_of="+asOf:""))]),box=$("#body");box.innerHTML="";
+  const one=$("#oneThing");one.hidden=false;one.innerHTML=`<b>今日一件事</b>　${esc(br.one_thing)}`;
+  for(const [key,title] of Object.entries(BODY_TITLE)){const s=b[key];if(!s)continue;
+    const btn=document.createElement("button");btn.className=`bsec ${s.available?s.level:"off"}`;
+    btn.innerHTML=`<i class="dot"></i><span class="t">${title}</span><span class="l">${esc(s.available?s.label:s.reason||"数据不足")}</span>`;
+    if(s.available){const det=document.createElement("div");det.className="bdet";det.hidden=true;det.innerHTML=bodyDetail(key,s);btn.appendChild(det);btn.onclick=()=>det.hidden=!det.hidden}
+    box.appendChild(btn)}
+}
+async function loadIcu(){
+  const c=await api("/api/intervals"),f=$("#icuForm");f.athlete_id.value=c.athlete_id||"0";f.api_key.value="";
+  $("#icuHint").textContent=c.key_set?`已设置 ${c.key_hint}`:"未设置";$("#icuState").textContent=c.last_sync?"上次同步 "+c.last_sync.replace("T"," ").slice(5,16):"";
+}
 async function loadJobs(){
   const {items}=await api("/api/jobs");
   for(const j of items.slice(-8)){if(S.live.has(j.job_id))continue;if(S.jobs.get(j.job_id)===j.completed)continue;if(S.jobs.has(j.job_id)&&!j.completed)continue;jobCard(await api("/api/job?id="+encodeURIComponent(j.job_id)))}
@@ -737,10 +787,10 @@ function wireForms(){
   f.querySelectorAll("input[type=range]").forEach(r=>r.oninput=()=>f.querySelector(`[data-out="${r.name}"]`).textContent=r.value);
   $("#flags").innerHTML=Object.entries(RED_FLAGS).map(([k,v])=>`<label class="check"><input type="checkbox" value="${k}">${v}</label>`).join("");
   f.onsubmit=async e=>{e.preventDefault();const ev={type:f.type.value,date:f.date.value.replace(/-/g,""),subjective_recovery:+f.subjective_recovery.value,pain:+f.pain.value};
-    if(f.rpe.value!=="")ev.rpe=+f.rpe.value;if(f.illness.checked)ev.illness=true;if(f.note.value)ev.note=f.note.value;
+    if(f.rpe.value!=="")ev.rpe=+f.rpe.value;if(f.illness.checked)ev.illness=true;if(f.note.value)ev.note=f.note.value;if(f.tags.value.trim())ev.tags=f.tags.value;
     const flags=[...f.querySelectorAll("#flags input:checked")].map(i=>i.value);if(flags.length)ev.red_flags=flags;
     if(ev.type!=="morning_checkin"&&ev.type!=="weekly_checkin")delete ev.subjective_recovery;
-    try{await api("/api/checkin",ev);toast("已记下");f.note.value="";await refresh(false)}catch(err){toast(err.message)}};
+    try{await api("/api/checkin",ev);toast("已记下");f.note.value="";f.tags.value="";await refresh(false)}catch(err){toast(err.message)}};
   const pf=$("#profile");api("/api/profile").then(p=>{pf.hr_max.value=p.hr_max??"";pf.hr_rest.value=p.hr_rest??"";pf.goal.value=p.goal??""});
   pf.onsubmit=async e=>{e.preventDefault();const b={goal:pf.goal.value};if(pf.hr_max.value)b.hr_max=+pf.hr_max.value;if(pf.hr_rest.value)b.hr_rest=+pf.hr_rest.value;try{await api("/api/profile",b);toast("档案已保存")}catch(err){toast(err.message)}};
   $("#askForm").onsubmit=e=>{e.preventDefault();
@@ -748,6 +798,11 @@ function wireForms(){
     const body={query:$("#askInput").value.trim(),task:$("#askTask").value,as_of:S.snap.week.as_of};$("#askInput").value="";askAI(body)};
   const lf=$("#llmForm");
   lf.provider.onchange=async()=>{try{await api("/api/llm",{provider:lf.provider.value});await loadLLM();toast("已切换服务商")}catch(err){toast(err.message)}};
+  const icu=$("#icuForm");
+  icu.onsubmit=async e=>{e.preventDefault();const b={athlete_id:icu.athlete_id.value.trim()||"0"};if(icu.api_key.value)b.api_key=icu.api_key.value;
+    try{await api("/api/intervals",b);await loadIcu();toast("intervals.icu 设置已保存")}catch(err){toast(err.message)}};
+  $("#icuSync").onclick=async()=>{$("#icuState").textContent="同步中…";try{const r=await api("/api/intervals/sync",{days:60});
+    toast(`同步完成：健康数据 ${r.wellness_days} 天 · 新训练 ${r.activities_added} 次 · 计划课 ${r.planned} 节`);await loadIcu();await refresh(false)}catch(err){$("#icuState").textContent="失败";toast(err.message)}};
   lf.onsubmit=async e=>{e.preventDefault();const b={model:lf.model.value,base_url:lf.base_url.value,max_attempts:+lf.max_attempts.value};if(lf.api_key.value)b.api_key=lf.api_key.value;
     try{await api("/api/llm",b);await loadLLM();toast("AI 内核已保存")}catch(err){toast(err.message)}};
   $("#llmTest").onclick=async()=>{$("#llmState").textContent="测试中…";try{const r=await api("/api/llm/test",{});$("#llmState").textContent=r.ok?`通了：${r.reply}`:"失败";if(!r.ok)toast(r.error)}catch(err){$("#llmState").textContent="失败";toast(err.message)}};
@@ -844,12 +899,12 @@ async function refresh(animate=true){
     $("#demoBtn").onclick=async()=>{await api("/api/demo",{});refresh()};return}
   drawRing();drawChips();drawAxes();drawScrub();
   selectDay(S.day&&S.hist.daily.some(r=>r.date===S.day)?S.day:S.snap.week.as_of,animate);
-  loadSuggs();loadPlan();loadAutonomy();
+  loadSuggs();loadPlan();loadAutonomy();loadBody().catch(()=>{});
   try{if(!localStorage.getItem("readHow")){localStorage.setItem("readHow","1");buildHow();$("#howSheet").hidden=false}}catch{}
 }
 try{const t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch{}
 wireForms();wireExtras();
-loadLLM().catch(()=>{});
+loadLLM().catch(()=>{});loadIcu().catch(()=>{});
 refresh().then(loadJobs).catch(e=>{$("#dayTitle").textContent="连接本机服务失败";$("#caption").textContent=e.message});
 setInterval(()=>loadJobs().catch(()=>{}),8000);
 </script>

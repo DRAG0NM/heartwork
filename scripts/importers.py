@@ -21,6 +21,7 @@ import zipfile
 from datetime import datetime, timezone
 
 import store
+import streams
 
 
 FIT_EPOCH = 631065600
@@ -123,6 +124,14 @@ def _activity(kind, start, duration, distance, samples, profile, avg_hr=None):
     return item
 
 
+def _attach(item, points, profile):
+    if item is not None:
+        analysis = streams.analyze(points, profile)
+        if analysis:
+            item["analysis"] = analysis
+    return item
+
+
 # ---------------------------------------------------------------- FIT
 
 def _fit_chunk(data, pos, end):
@@ -184,12 +193,15 @@ def _fit_messages(data):
 
 
 def parse_fit(data, profile=None):
-    sessions, records = [], []
+    sessions, records, points = [], [], []
     for gnum, values in _fit_messages(data):
         if gnum == 18:
             sessions.append({name: values[number] for number, name in SESSION_FIELDS.items() if number in values})
         elif gnum == 20 and 253 in values:
             records.append((values[253], values.get(3)))
+            alt = values.get(78, values.get(2))
+            points.append((values[253], values.get(3), values[5] / 100.0 if 5 in values else None,
+                           alt / 5.0 - 500 if alt is not None else None))
     if not sessions and records:
         sessions = [{"start": records[0][0], "elapsed": (records[-1][0] - records[0][0]) * 1000.0}]
     activities = []
@@ -204,7 +216,9 @@ def parse_fit(data, profile=None):
                          datetime.fromtimestamp(start + FIT_EPOCH, timezone.utc).astimezone(), duration,
                          session.get("distance", 0) / 100.0, samples, profile, session.get("avg_hr"))
         if item:
-            activities.append(item)
+            stream = [{"t": ts + FIT_EPOCH, "hr": hr, "d": d, "alt": alt}
+                      for ts, hr, d, alt in points if start <= ts <= start + span + 1]
+            activities.append(_attach(item, stream, profile))
     return activities
 
 
@@ -230,7 +244,7 @@ def _float(text):
 
 
 def parse_gpx(root, profile=None):
-    points, samples = [], []
+    points, samples, stream, run = [], [], [], 0.0
     for point in _find(root, "trkpt"):
         time = _parse_time(_direct(point, "time"))
         hr = next((c.text for c in point.iter() if _name(c) == "hr"), None)
@@ -238,7 +252,13 @@ def parse_gpx(root, profile=None):
             lat, lon = float(point.get("lat")), float(point.get("lon"))
         except (TypeError, ValueError):
             continue
+        if points:
+            run += _haversine(points[-1][1:], (lat, lon))
         points.append((time, lat, lon))
+        if time:
+            ele = _direct(point, "ele")
+            stream.append({"t": time.timestamp(), "d": run, "alt": _float(ele) if ele else None,
+                           "hr": int(hr) if hr and hr.strip().isdigit() else None})
         if time and hr and hr.strip().isdigit():
             samples.append((time.timestamp(), int(hr)))
     timed = [p for p in points if p[0]]
@@ -248,13 +268,13 @@ def parse_gpx(root, profile=None):
     kind = next((c.text.strip().lower() for c in _find(root, "type") if c.text), "other")
     duration = (timed[-1][0] - timed[0][0]).total_seconds()
     item = _activity(kind, timed[0][0], duration, distance, samples, profile)
-    return [item] if item else []
+    return [_attach(item, stream, profile)] if item else []
 
 
 def parse_tcx(root, profile=None):
     activities = []
     for node in _find(root, "Activity"):
-        samples, times, dists = [], [], []
+        samples, times, dists, stream = [], [], [], []
         laps = _find(node, "Lap")
         lap_seconds = sum(_float(_direct(lap, "TotalTimeSeconds")) for lap in laps)
         lap_dist = sum(_float(_direct(lap, "DistanceMeters")) for lap in laps)
@@ -263,20 +283,25 @@ def parse_tcx(root, profile=None):
             if time is None:
                 continue
             times.append(time)
-            if _direct(point, "DistanceMeters"):
-                dists.append(_float(_direct(point, "DistanceMeters")))
+            dm, am = _direct(point, "DistanceMeters"), _direct(point, "AltitudeMeters")
+            if dm:
+                dists.append(_float(dm))
+            row = {"t": time.timestamp(), "hr": None, "d": _float(dm) if dm else None,
+                   "alt": _float(am) if am else None}
+            stream.append(row)
             for child in point:
                 if _name(child) == "HeartRateBpm":
                     value = _direct(child, "Value")
                     if value and value.strip().isdigit():
                         samples.append((time.timestamp(), int(value)))
+                        row["hr"] = int(value)
         start = _parse_time(_direct(node, "Id")) or (times[0] if times else None)
         duration = lap_seconds or ((times[-1] - times[0]).total_seconds() if len(times) > 1 else 0)
         distance = max(dists) - min(dists) if len(dists) > 1 else lap_dist
         item = _activity((node.get("Sport") or "other").lower(), start, duration, distance or lap_dist,
                          samples, profile)
         if item:
-            activities.append(item)
+            activities.append(_attach(item, stream, profile))
     return activities
 
 

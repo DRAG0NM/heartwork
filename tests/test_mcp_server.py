@@ -62,7 +62,9 @@ class McpServerTest(unittest.TestCase):
                 self.assertEqual(names, {"status", "import_files", "log_event", "weekly_report",
                                          "start_coach_job", "submit_coach_response",
                                          "list_pending_suggestions", "run_eval", "get_profile",
-                                         "get_autonomy"})
+                                         "get_autonomy", "body_insights", "morning_brief",
+                                         "sync_intervals"})
+                self.assertNotIn("push_workout", names)
                 self.assertTrue(all(tool["inputSchema"]["type"] == "object" for tool in tools))
                 self.assertNotIn("decide", names)
                 self.assertNotIn("apply_plan", names)

@@ -6,12 +6,23 @@ The workspace sits outside the repository (default ``~/.heartwork``, or
 are still honoured) so real data can never be committed by accident.
 Everything downstream (reports, coach context, MCP, web) reads the standard
 weekly input assembled by :func:`weekly_input`.
+
+Workspace documents (daily rows, activities, plan, profile, settings...) live in
+one SQLite file, ``heartwork.db``, so the web page, the MCP server and the
+desktop window can write at the same time without losing each other's
+changes. Older JSON files are copied in on first read and then left untouched.
+Every write bumps a data version that keys the cache of computed views.
 """
 
 from __future__ import annotations
 
+import contextlib
+import functools
+import glob
 import json
 import os
+import sqlite3
+import threading
 from datetime import datetime, timedelta
 
 from core_metrics import trimp_edwards
@@ -20,7 +31,7 @@ from core_metrics import trimp_edwards
 DAILY_KEYS = ("sleep_duration_min", "sleep_score", "sleep_efficiency", "hrv_rmssd",
               "resting_hr", "stress", "training_load", "vo2max", "running_ability",
               "subjective_recovery")
-EXTRA_DAILY_KEYS = ("weight_kg", "steps")
+EXTRA_DAILY_KEYS = ("weight_kg", "steps", "respiration", "spo2", "skin_temp_dev")
 SOURCE_PRIORITY = {"manual": 3, "device": 2, "import": 1, "demo": 0}
 EVENT_FIELDS = ("date", "type", "pain", "illness", "function_limited", "worsening",
                 "rpe", "duration_min", "subjective_recovery", "red_flags")
@@ -41,21 +52,162 @@ def _path(base, *parts):
     return os.path.join(home(base), *parts)
 
 
-def read_json(path, default=None):
+DB_NAME = "heartwork.db"
+DOCS = {"daily.json", "activities.json", "sleep_intervals.json", "imports.json", "profile.json",
+        "plan.json", "settings.json", "llm.json", "intervals.json", "planned.json"}
+_local = threading.local()
+_CODE = os.path.dirname(os.path.abspath(__file__))
+# Computed views depend on the code too: an upgrade must not serve a stale cache.
+CODE_VERSION = str(max(os.path.getmtime(name) for name in glob.glob(os.path.join(_CODE, "*.py"))))
+
+
+def _doc(path):
+    path = os.path.abspath(path)
+    name = os.path.basename(path)
+    return (os.path.dirname(path), name) if name in DOCS else (None, None)
+
+
+_READY = set()
+
+
+def _open(root):
+    os.makedirs(root, exist_ok=True)
+    conn = sqlite3.connect(os.path.join(root, DB_NAME), timeout=15, isolation_level=None)
+    if root not in _READY:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS docs (name TEXT PRIMARY KEY, body TEXT NOT NULL, updated_at TEXT);"
+            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, version TEXT NOT NULL, "
+            "body TEXT NOT NULL);")
+        _READY.add(root)
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
+def _held():
+    return _local.__dict__.setdefault("held", {})
+
+
+@contextlib.contextmanager
+def _conn(root):
+    """The session's connection when one is held for root, else a short-lived one.
+
+    Connections are not kept beyond a session: an open handle would pin the file on Windows.
+    """
+    held = _held().get(root)
+    if held is not None:
+        yield held[0]
+        return
+    conn = _open(root)
     try:
-        with open(path, encoding="utf-8") as handle:
-            return json.load(handle)
-    except FileNotFoundError:
-        return default
+        yield conn
+    finally:
+        conn.close()
+
+
+@contextlib.contextmanager
+def session(base=None):
+    """Reuse one connection for a whole request or command; nests safely."""
+    root = home(base)
+    if root in _held():
+        yield
+        return
+    _held()[root] = [_open(root), False]
+    try:
+        yield
+    finally:
+        _held().pop(root)[0].close()
+
+
+@contextlib.contextmanager
+def transaction(base=None):
+    """Serialize a read-modify-write across processes (BEGIN IMMEDIATE); nests safely."""
+    root = home(base)
+    with session(root):
+        held = _held()[root]
+        if held[1]:
+            yield
+            return
+        held[0].execute("BEGIN IMMEDIATE")
+        held[1] = True
+        try:
+            yield
+            held[0].execute("COMMIT")
+        except BaseException:
+            held[0].execute("ROLLBACK")
+            raise
+        finally:
+            held[1] = False
+
+
+def read_json(path, default=None):
+    root, name = _doc(path)
+    if root is None:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                return json.load(handle)
+        except FileNotFoundError:
+            return default
+    with _conn(root) as conn:
+        row = conn.execute("SELECT body FROM docs WHERE name=?", (name,)).fetchone()
+        if row:
+            return json.loads(row[0])
+        try:
+            with open(path, encoding="utf-8") as handle:
+                value = json.load(handle)
+        except FileNotFoundError:
+            return default
+        conn.execute("INSERT OR IGNORE INTO docs VALUES (?, ?, ?)",
+                     (name, json.dumps(value, ensure_ascii=False), "migrated"))
+        return value
 
 
 def write_json(path, value):
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    temporary = path + ".tmp"
-    with open(temporary, "w", encoding="utf-8") as handle:
-        json.dump(value, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
-    os.replace(temporary, path)
+    root, name = _doc(path)
+    if root is None:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        temporary = path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(temporary, path)
+        return
+    with transaction(root), _conn(root) as conn:
+        conn.execute("INSERT OR REPLACE INTO docs VALUES (?, ?, ?)",
+                     (name, json.dumps(value, ensure_ascii=False),
+                      datetime.now().isoformat(timespec="seconds")))
+        conn.execute("INSERT INTO meta VALUES ('version', 1) "
+                     "ON CONFLICT(key) DO UPDATE SET value = value + 1")
+
+
+def data_version(base=None):
+    """Changes whenever stored data, the event/decision logs or the code change."""
+    root = home(base)
+    with _conn(root) as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key='version'").fetchone()
+    logs = []
+    for name in ("events.jsonl", "decisions.jsonl"):
+        try:
+            logs.append(str(os.stat(os.path.join(root, name)).st_mtime_ns))
+        except FileNotFoundError:
+            logs.append("0")
+    return "%s|%s|%s" % (row[0] if row else 0, "|".join(logs), CODE_VERSION)
+
+
+def cached(base, key, compute):
+    """Return compute() memoized in the workspace until data_version changes."""
+    root = home(base)
+    version = data_version(base)
+    with _conn(root) as conn:
+        row = conn.execute("SELECT version, body FROM cache WHERE key=?", (key,)).fetchone()
+    if row and row[0] == version:
+        return json.loads(row[1])
+    value = compute()
+    with _conn(root) as conn:
+        conn.execute("INSERT OR REPLACE INTO cache VALUES (?, ?, ?)",
+                     (key, version, json.dumps(value, ensure_ascii=False)))
+    return value
 
 
 def compact_date(value):
@@ -64,6 +216,7 @@ def compact_date(value):
     return datetime.strptime(str(value).replace("-", "")[:8], "%Y%m%d").strftime("%Y%m%d")
 
 
+@functools.lru_cache(maxsize=16384)
 def _shift(day, days):
     return (datetime.strptime(day, "%Y%m%d") + timedelta(days=days)).strftime("%Y%m%d")
 
@@ -136,12 +289,42 @@ def _synthetic_history(end="20260809", days=55, seed=33):
     return rows, activities, intervals
 
 
+def _demo_streams(rows, activities, seed=11):
+    """Synthetic weigh-ins and 1 Hz streams (pace surges, HR drift, rolling hills) for the demo."""
+    import math
+    import random
+    import streams
+    rng = random.Random(seed)
+    for index, row in enumerate(rows):
+        if index % 2 == 0:
+            row["weight_kg"] = round(68.8 - 0.012 * index + rng.gauss(0, 0.25), 1)
+    for item in activities:
+        duration, distance = item.get("duration_s"), item.get("distance_m")
+        if not duration or not distance:
+            continue
+        speed, hr0 = distance / duration, (item.get("avg_hr") or 145) - 4
+        surge = item.get("type") == "节奏跑"
+        points, covered, start = [], 0.0, 1.7e9
+        for t in range(int(duration)):
+            v = speed * (1 + 0.04 * math.sin(t / 97.0))
+            if surge and 600 <= t % 1500 < 600 + 240 + (t // 1500) * 120:
+                v *= 1.12
+            covered += v
+            drift = 9.0 * t / duration
+            points.append({"t": start + t, "hr": int(round(hr0 + drift + (v - speed) * 14 + rng.gauss(0, 1))),
+                           "d": covered, "alt": 30 + 12 * math.sin(t / 420.0)})
+        analysis = streams.analyze(points)
+        if analysis:
+            item["analysis"] = analysis
+
+
 def _seed_demo(root):
     here = os.path.dirname(os.path.abspath(__file__))
     sample = read_json(os.path.join(here, "..", "examples", "synthetic_week.json"))
     rows, activities, intervals = _synthetic_history()
     srpe_events = [{"type": "post_workout_feedback", "date": item["date"],
                     "rpe": item.pop("_rpe")} for item in activities if "_rpe" in item]
+    _demo_streams(rows, activities)
     upsert_daily(root, rows, "demo")
     add_activities(root, activities, "demo")
     add_sleep_intervals(root, intervals)
@@ -171,6 +354,11 @@ def load_daily(base=None):
 
 
 def upsert_daily(base, rows, source="import", file_ref=None):
+    with transaction(base):
+        return _upsert_daily(base, rows, source, file_ref)
+
+
+def _upsert_daily(base, rows, source, file_ref):
     """Merge metric rows by date; a lower-priority source never overwrites a higher one.
 
     ``file_ref`` ({"name", "sha256"}) records which imported file each value came from.
@@ -220,6 +408,11 @@ def _activity_key(activity):
 
 
 def add_activities(base, activities, source="import", file_ref=None):
+    with transaction(base):
+        return _add_activities(base, activities, source, file_ref)
+
+
+def _add_activities(base, activities, source, file_ref):
     existing = load_activities(base)
     keys = {_activity_key(item) for item in existing}
     added = 0
@@ -247,6 +440,11 @@ def load_sleep_intervals(base=None):
 
 
 def add_sleep_intervals(base, intervals):
+    with transaction(base):
+        return _add_sleep_intervals(base, intervals)
+
+
+def _add_sleep_intervals(base, intervals):
     existing = load_sleep_intervals(base)
     seen = {(item["start"], item["end"]) for item in existing}
     added = 0
@@ -272,9 +470,10 @@ def load_imports(base=None):
 
 def add_import(base, record):
     """Append one imported-file record: {file, sha256, size, imported_at, kind, counts}."""
-    imports = load_imports(base)
-    imports.append(record)
-    write_json(_path(base, "imports.json"), imports)
+    with transaction(base):
+        imports = load_imports(base)
+        imports.append(record)
+        write_json(_path(base, "imports.json"), imports)
 
 
 def provenance(base, date, metric=None):
@@ -315,6 +514,11 @@ def load_plan(base=None):
 
 def save_plan(base, text, reason):
     """Only coach_decisions.apply_plan may call this: plan changes need human consent."""
+    with transaction(base):
+        return _save_plan(base, text, reason)
+
+
+def _save_plan(base, text, reason):
     plan = load_plan(base)
     if plan.get("current_plan"):
         plan.setdefault("history", []).append({
@@ -427,6 +631,11 @@ def daily_rows(base, first, last, details=None):
 
 def weekly_input(base=None, as_of=None):
     """Assemble the vendor-neutral weekly input (schema v1) for the week containing as_of."""
+    with session(base):
+        return _weekly_input(base, as_of)
+
+
+def _weekly_input(base, as_of):
     as_of = compact_date(as_of) if as_of else (latest_date(base) or datetime.now().strftime("%Y%m%d"))
     day = datetime.strptime(as_of, "%Y%m%d")
     mon = (day - timedelta(days=day.weekday())).strftime("%Y%m%d")

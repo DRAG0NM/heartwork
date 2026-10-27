@@ -77,6 +77,16 @@ def safety_gate(events, as_of):
             "required_action_types": []}
 
 
+def _with_body_signal(gate, insights):
+    """An overnight anomaly alert (RHR up, HRV down plus breathing or temperature) holds training at yellow."""
+    illness = (insights or {}).get("illness") or {}
+    if gate["level"] == "green" and illness.get("level") == "alert":
+        return {"level": "yellow", "reasons": [{"signal": "body_anomaly", "value": illness.get("label")}],
+                "training_actions_blocked": True,
+                "required_action_types": ["protective_activity", "reduce", "rest", "seek_professional_help"]}
+    return gate
+
+
 BASELINE_FIELDS = ("key", "label", "unit", "recent_mean", "center", "band", "swc", "z",
                    "status", "oriented", "n_recent", "n_baseline")
 
@@ -86,7 +96,7 @@ def _baseline_status(daily, as_of):
             for item in baseline.day_status(daily, as_of).values()]
 
 
-def build_context(payload, task, query="", level=None):
+def build_context(payload, task, query="", level=None, insights=None):
     if task not in TASK_ACTIONS:
         raise ValueError("unknown task: %s" % task)
     level = level or coach_policy.DEFAULT_LEVEL
@@ -121,10 +131,12 @@ def build_context(payload, task, query="", level=None):
             "current_plan": payload.get("current_plan"),
         },
         "recent_events": events,
-        "safety_gate": safety_gate(events, as_of),
+        "safety_gate": _with_body_signal(safety_gate(events, as_of), insights),
         "data_status": {"partial_week": bool(week.get("partial") or as_of < _compact_date(week["sun"])),
                         "missing_inputs": []},
     }
+    if insights:
+        context["views"]["insights"] = insights
     if not events:
         context["data_status"]["missing_inputs"].append("subjective_events")
     unsigned = dict(context)
@@ -172,7 +184,11 @@ def _expected_layer(pointer):
         return "deterministic_metric"
     if pointer.startswith("/views/current_plan"):
         return "plan"
-    if pointer.startswith("/views/baseline_status"):
+    if pointer.startswith("/views/baseline_status") or pointer.startswith("/views/insights"):
+        return "deterministic_metric"
+    if pointer.startswith("/views/activities"):
+        return "raw_signal"
+    if pointer.startswith("/data_status"):
         return "deterministic_metric"
     return None
 
@@ -402,6 +418,98 @@ def _text_errors(observation, path, context):
                                       "cite the empty field or /data_status, or correct the statement"})
         break
     return errors
+
+
+FACT_FIELDS = {
+    "latest": "最新", "latest_date": "最新日期", "week_mean": "本周均值", "baseline_28d_mean": "28日均值",
+    "delta_vs_baseline": "较基线", "recent_mean": "7日均", "center": "常态中位", "band": "常态带",
+    "z": "偏离z", "status": "判定", "oriented": "好坏", "value": "当日", "distance_m": "距离m",
+    "duration_s": "时长s", "avg_hr": "均心率", "hr_zone_minutes": "心率区间分钟", "load_method": "负荷口径",
+    "type": "类型", "pain": "疼痛", "rpe": "RPE", "subjective_recovery": "主观恢复", "illness": "生病",
+    "index": "指数", "reliability": "可信度", "level": "灯色", "reasons": "原因", "partial_week": "部分周",
+    "missing_inputs": "缺少输入"}
+FACT_SKIP = {"pointer", "source", "key", "label", "unit", "transform", "aggregate", "id", "available",
+             "meaning", "swc", "scale", "kind", "latest_date", "delta_vs_baseline", "schema_version", "anchor", "date", "n_recent",
+             "n_baseline", "n_week", "required_action_types", "training_actions_blocked", "warnings",
+             "change_points", "status_note"}
+
+
+def _escape(part):
+    return str(part).replace("~", "~0").replace("/", "~1")
+
+
+def _md(day):
+    day = str(day or "")
+    return "%d月%d日" % (int(day[4:6]), int(day[6:8])) if len(day) == 8 and day.isdigit() else ""
+
+
+def facts(context):
+    """Numbered facts (id, pointer, label, value) derived from the signed context.
+
+    The built-in coach cites "F12" instead of copying pointers and values; the ids are
+    rebuilt from the context at verification time, so they cannot be forged.
+    """
+    views = context.get("views") or {}
+    rows = []
+
+    def add(pointer, label, value):
+        rows.append({"id": "F%d" % (len(rows) + 1), "pointer": pointer, "label": label, "value": value})
+
+    def leaves(value, pointer, label, depth=0):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key not in FACT_SKIP:
+                    leaves(item, "%s/%s" % (pointer, _escape(key)),
+                           "%s·%s" % (label, FACT_FIELDS.get(key, key)), depth + 1)
+        elif isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+            for index, item in enumerate(value):
+                leaves(item, "%s/%d" % (pointer, index), "%s#%d" % (label, index), depth + 1)
+        elif value is not None and value != []:
+            add(pointer, label, value)
+
+    for index, card in enumerate(views.get("raw_signals") or []):
+        leaves(card, "/views/raw_signals/%d" % index,
+               "原始·%s(%s)" % (card.get("label"), _md(card.get("latest_date"))))
+    for index, item in enumerate(views.get("baseline_status") or []):
+        leaves(item, "/views/baseline_status/%d" % index, "基线·%s[%s]" % (item.get("label"), item.get("key")))
+    for index, row in enumerate(views.get("recent_daily") or []):
+        for key, value in row.items():
+            if key != "date" and value is not None:
+                add("/views/recent_daily/%d/%s" % (index, _escape(key)),
+                    "%s·%s" % (row.get("date"), baseline.METRICS.get(key, {}).get("label", key)), value)
+    for index, item in enumerate(views.get("activities") or []):
+        leaves(item, "/views/activities/%d" % index, "训练·%s %s" % (item.get("date"), item.get("type")))
+    for index, axis in enumerate((views.get("state") or {}).get("axes") or []):
+        leaves(axis, "/views/state/axes/%d" % index, "实验·%s" % axis.get("label"))
+    if views.get("insights"):
+        leaves(views["insights"], "/views/insights", "判断")
+    if views.get("current_plan"):
+        add("/views/current_plan", "当前计划", views["current_plan"])
+    for index, event in enumerate(context.get("recent_events") or []):
+        leaves(event, "/recent_events/%d" % index, "打卡·%s %s" % (event.get("date"), event.get("type")))
+    leaves(context.get("safety_gate") or {}, "/safety_gate", "安全门")
+    leaves(context.get("data_status") or {}, "/data_status", "数据状态")
+    return rows
+
+
+def expand_facts(response, context):
+    """Replace {"fact": "F12"} evidence with the full pointer/layer/value it stands for."""
+    table = {row["id"]: row for row in facts(context)}
+    for section in ("observations", "recommendations"):
+        for item in response.get(section) or []:
+            if not isinstance(item, dict) or not isinstance(item.get("evidence"), list):
+                continue
+            expanded = []
+            for evidence in item["evidence"]:
+                if isinstance(evidence, dict) and "fact" in evidence and "pointer" not in evidence:
+                    row = table.get(str(evidence["fact"]).strip().upper())
+                    pointer = row["pointer"] if row else "/unknown_fact/%s" % evidence["fact"]
+                    evidence = {"source": "coach_context", "pointer": pointer,
+                                "layer": _expected_layer(pointer) or "raw_signal",
+                                "observed_value": row["value"] if row else None}
+                expanded.append(evidence)
+            item["evidence"] = expanded
+    return response
 
 
 def validate_response(response, context):

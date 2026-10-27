@@ -15,7 +15,8 @@ import coach_events
 import coach_policy
 import coach_skills
 import store
-from coach_core import RED_FLAGS, TASK_ACTIONS, build_context, stable_hash, validate_response
+from coach_core import (RED_FLAGS, TASK_ACTIONS, build_context, expand_facts, stable_hash,
+                        validate_response)
 
 WEEKLY_WORDS = ("周复盘", "周报", "本周", "上周", "下周", "每周", "weekly", "复盘")
 WORKOUT_WORDS = ("刚练完", "练完", "跑完", "运动后", "训练后", "刚跑", "post workout")
@@ -119,16 +120,22 @@ def _instructions(task, context):
     return "\n".join(lines)
 
 
+def _body(base, as_of):
+    import api  # api imports this module; resolve lazily
+    return api.compact_insights(api.insights(base, as_of))
+
+
 def start_job(base, query, task=None, as_of=None):
     payload = store.weekly_input(base, as_of)
     task = task or choose_task(query, coach_events.active_events(base))
-    context = build_context(payload, task, query or "", coach_policy.get_level(base))
+    body = _body(base, payload["week"]["as_of"])
+    context = build_context(payload, task, query or "", coach_policy.get_level(base), body)
     now = datetime.now()
     job_id = "job_%s_%s" % (now.strftime("%Y%m%d_%H%M%S"),
                             stable_hash([context["content_sha256"], now.isoformat()])[:6])
     job = {"kind": "coach_job", "job_id": job_id, "task": task,
            "skills": coach_skills.route(task, query), "context": context,
-           "source_sha256": stable_hash(payload),
+           "source_sha256": stable_hash([payload, body]),
            "created_at": now.isoformat(timespec="seconds"),
            "instructions": _instructions(task, context)}
     job["signature"] = _sign(base, job)
@@ -174,9 +181,11 @@ def complete_job(base, job_id, response):
     expected = _sign(base, job) if job.get("context") else ""
     if not hmac.compare_digest(str(job.get("signature", "")), expected):
         return _fail("signature", "job signature does not verify; the job file was modified")
-    current = stable_hash(store.weekly_input(base, job["context"]["as_of"]))
+    as_of = job["context"]["as_of"]
+    current = stable_hash([store.weekly_input(base, as_of), _body(base, as_of)])
     if current != job["source_sha256"]:
         return _fail("stale", "workspace data changed after this job was created; start a new job")
+    response = expand_facts(response, job["context"])
     result = validate_response(response, job["context"])
     if not result["valid"]:
         return {"valid": False, "errors": result["errors"], "markdown": "", "suggestions": [],

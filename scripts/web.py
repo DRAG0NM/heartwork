@@ -55,6 +55,11 @@ def prompt_text(job):
     return "\n".join(parts)
 
 
+def _brief(base, as_of=None):
+    import brief
+    return brief.build(base, as_of)
+
+
 def job_view(base, job_id):
     job = coach_runtime.load_job(base, job_id)
     view = {key: job[key] for key in ("job_id", "task", "skills", "created_at")}
@@ -98,7 +103,8 @@ def make_handler(base):
             if not self._host_ok():
                 return self._send(403, {"error": "仅允许本机访问"})
             try:
-                return handler()
+                with store.session(base):
+                    return handler()
             except PermissionError as exc:
                 return self._send(403, {"error": str(exc)})
             except (ValueError, KeyError, FileNotFoundError, json.JSONDecodeError) as exc:
@@ -133,6 +139,9 @@ def make_handler(base):
                 "/api/decisions": lambda: api.decisions(base),
                 "/api/provenance": lambda: api.provenance(base, query["date"], query.get("metric")),
                 "/api/llm": lambda: llm.public(base),
+                "/api/insights": lambda: api.insights(base, as_of),
+                "/api/brief": lambda: _brief(base, as_of),
+                "/api/intervals": lambda: api.get_intervals(base),
             }
             if url.path not in routes:
                 return self._send(404, {"error": "not found"})
@@ -145,6 +154,13 @@ def make_handler(base):
             body = self._json_body()
             if path == "/api/coach":
                 return self._coach_stream(body)
+            if path == "/api/intervals":
+                return self._send(200, api.set_intervals(base, body))
+            if path == "/api/intervals/sync":
+                return self._send(200, api.sync_intervals(base, int(body.get("days") or 60)))
+            if path == "/api/intervals/push":
+                return self._send(200, api.push_workout(base, body.get("workout") or {},
+                                                        body.get("confirm") is True))
             if path == "/api/llm":
                 return self._send(200, llm.save(base, body))
             if path == "/api/llm/test":

@@ -77,6 +77,14 @@ def log_event(base, event):
         if not isinstance(note, str) or len(note) > NOTE_LIMIT:
             raise ValueError("note must be text of at most %d characters" % NOTE_LIMIT)
         record["note"] = note
+    tags = event.get("tags") or []
+    if isinstance(tags, str):
+        tags = [part for part in tags.replace("，", ",").split(",")]
+    tags = sorted({str(tag).strip()[:20] for tag in tags if str(tag).strip()})
+    if len(tags) > 8:
+        raise ValueError("at most 8 tags per check-in")
+    if tags:
+        record["tags"] = tags
     if event.get("supersedes"):
         known = {item.get("id") for item in load_events(base)}
         if event["supersedes"] not in known:

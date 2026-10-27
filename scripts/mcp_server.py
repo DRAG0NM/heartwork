@@ -37,7 +37,8 @@ TOOLS = [
     ("log_event", "记录主观打卡/疼痛/训练反馈事件（只追加）。",
      _schema({"event": {"type": "object", "description":
               "type 取 morning_checkin/post_workout_feedback/pain_followup/weekly_checkin/note；"
-              "可含 date、pain(0-10)、rpe(0-10)、subjective_recovery(1-10)、illness、red_flags[]、note"}},
+              "可含 date、pain(0-10)、rpe(0-10)、subjective_recovery(1-10)、illness、red_flags[]、note、"
+              "tags[]（习惯标签，如 饮酒、咖啡、晚餐晚、出差）"}},
              ["event"])),
     ("weekly_report", "生成周报告 Markdown 并写入工作区 reports/。",
      _schema({"as_of": {"type": "string", "description": "截止日期 YYYYMMDD 或 YYYY-MM-DD，缺省为最新数据日"}})),
@@ -54,6 +55,12 @@ TOOLS = [
     ("run_eval", "运行固定场景回放评测（硬门）。", _schema()),
     ("get_autonomy", "读取教练权限档位（只读；档位只能由用户在网页或 CLI 修改）。", _schema()),
     ("get_profile", "读取个人设置（hr_max、hr_rest、hr_zones、goal、notes）。", _schema()),
+    ("body_insights", "确定性身体判断：夜间异常预警、HRV 趋势与四态、睡眠规律、体重趋势、有氧耐久、"
+     "临界速度与比赛预测、习惯影响、计划完成率。",
+     _schema({"as_of": {"type": "string"}})),
+    ("morning_brief", "今日一件事（晨报），由安全门与身体判断确定性生成。", _schema()),
+    ("sync_intervals", "从 intervals.icu 拉取健康数据、训练和计划课（只读同步；需用户已在网页或 CLI 填好 API Key）。",
+     _schema({"days": {"type": "integer", "minimum": 1, "maximum": 365}})),
 ]
 TOOL_NAMES = {item[0] for item in TOOLS}
 
@@ -79,6 +86,10 @@ class Server:
         self.home = home
 
     def call_tool(self, name, args):
+        with api.store.session(self.home):
+            return self._call_tool(name, args)
+
+    def _call_tool(self, name, args):
         home = self.home
         if name == "status":
             return api.status(home)
@@ -108,6 +119,13 @@ class Server:
             return api.run_eval()
         if name == "get_autonomy":
             return api.get_autonomy(home)
+        if name == "body_insights":
+            return api.insights(home, args.get("as_of"))
+        if name == "morning_brief":
+            import brief
+            return brief.build(home)
+        if name == "sync_intervals":
+            return api.sync_intervals(home, int(args.get("days") or 60))
         return api.get_profile(home)
 
     def handle(self, message):

@@ -13,6 +13,7 @@ Descriptive only: not a diagnosis, not a threshold.
 
 from __future__ import annotations
 
+import functools
 import math
 from datetime import datetime, timedelta
 
@@ -64,6 +65,7 @@ def _compact(value):
     return str(value).replace("-", "")[:8]
 
 
+@functools.lru_cache(maxsize=16384)
 def _shift(day, days):
     return (datetime.strptime(day, "%Y%m%d") + timedelta(days=days)).strftime("%Y%m%d")
 

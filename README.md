@@ -35,6 +35,24 @@ Heartwork 不用人群平均值评判个人。
 
 这些计算只在 Python 里做一次，画布、AI 上下文和周报告用的是同一份结果。
 
+## 身体判断
+
+除了逐项对比个人基线，Heartwork 还在本机算出以下判断。每一项都写进教练上下文，可被引用和核验。
+
+| 判断 | 依据 |
+|---|---|
+| 异常预警 | 夜间静息心率升高且 HRV 下降，连续两晚；有呼吸频率或皮温时一并参考（Alavi 2022、Mishra 2020）。达到最高级时，安全门自动转黄灯 |
+| HRV 趋势 | 7 天基线对比 60 天正常范围、日间波动系数 CV、归一化 HRV（HRV4Training 的方法） |
+| 训练适应 | 稳定、应对良好、适应不良、疲劳累积、疑似功能性过量五种状态；后者用来识别"HRV 偏高但表现下降"的情况（Le Meur 2013、Plews 2013） |
+| 睡眠规律 | 睡眠规律指数 SRI 与社交时差（Phillips 2017、Windred 2024） |
+| 有氧耐久 | 同配速心率趋势、效率因子 EF、长距离心率解耦，按坡度校正配速计算（Minetti 2002、Smyth 2022） |
+| 比赛预测 | 临界速度与 D′，以及 Riegel 和 VDOT 预测（Smyth & Muniz-Pumares 2020） |
+| 体重趋势 | 指数平滑后的真实趋势；每周下降超过 1% 时提醒（Garthe 2011） |
+| 习惯影响 | 打卡时记下"饮酒、咖啡、晚餐晚"等标签，计算它们对第二天 HRV 和睡眠的影响，并给出 95% 置信区间 |
+| 计划完成 | 对比 intervals.icu 日历上的计划课和实际完成的训练 |
+
+每天的「今日一件事」由安全门和这些判断确定性生成，不调用模型；也可以推送为桌面通知。
+
 ## 有据可依的 AI 教练
 
 Heartwork 给 AI 定下一套必须遵守的规则。无论是内置 AI 内核，还是你接入的外部 agent，都要按这套规则作答。
@@ -70,7 +88,8 @@ Heartwork 给 AI 定下一套必须遵守的规则。无论是内置 AI 内核�
 
 - 工作区默认在 `~/.heartwork`，和代码仓库分开存放。
 - 网页只监听 `127.0.0.1`，会校验请求来源，不加载任何外部资源。
-- 核心零第三方依赖，不含任何厂商账号或数据抓取接口；桌面窗口需要另装 `pywebview`。
+- 核心零第三方依赖；桌面窗口需要另装 `pywebview`。数据存放在工作区的 SQLite 文件 `heartwork.db` 中，网页、MCP 和桌面版同时写入也不会互相覆盖。
+- 只有在你填写 API Key 后，才会访问 intervals.icu；同步时只读取你自己的数据。把计划课写回日历，必须由你在网页或命令行确认。
 - 内置 AI 内核用云端模型时，本次作业的 coach_context（近期指标、打卡、计划）会发给你选的服务商；选 Ollama 则全程留在本机。API Key 只存在工作区的 `llm.json`，任何界面都不回显。
 - 每个导入的文件都记在 `imports.json` 里，包括文件名、SHA-256 和写入的条数。
 
@@ -110,6 +129,10 @@ python scripts/heartwork.py coach "今天适合跑间歇吗"                    
 python scripts/heartwork.py desktop                                      # 桌面窗口（需要 pip install pywebview）
 ```
 
+已有 Claude 或 ChatGPT 订阅时，可以选「Claude 订阅（Claude Code）」或「ChatGPT 订阅（Codex CLI）」，直接用本机已登录的 CLI 作答，不需要 API Key（`model --provider claude-cli`）。
+
+内置内核会把上下文整理成一张编号事实表，模型只需写 `{"fact": "F12"}`，系统按编号展开成指针和数值后再核验。这样输入更短，输出也更短，抄错数值的情况也更少。
+
 网页和桌面窗口里点「问 AI」，回答会实时流式显示。每次作答都要经过签名校验和证据核验；没通过时，核验错误会回传给模型重写，默认最多 3 次。仍没通过的回答不展示。每次作答的耗时和 token 用量（含缓存命中）会显示出来，并和核验记录一起保存在 `jobs/<job_id>.agent.json`。所有核验都在本机完成，不额外消耗 token；上下文用紧凑 JSON 发送，重写时前缀不变，可以命中服务商的提示词缓存。
 
 ## 接入外部 AI
@@ -143,6 +166,12 @@ python scripts/heartwork.py install-skills --target claude   # 也支持 dsh / a
 
 ```bash
 python scripts/heartwork.py status                          # 工作区概况
+python scripts/heartwork.py intervals --api-key <key>       # 绑定 intervals.icu
+python scripts/heartwork.py intervals sync                  # 同步健康数据、训练和计划课
+python scripts/heartwork.py insights                        # 身体判断
+python scripts/heartwork.py brief --notify                  # 今日一件事，并弹出桌面通知
+python scripts/heartwork.py brief --schedule 07:30          # 打印每天定时推送的系统命令
+python scripts/heartwork.py checkin --recovery 6 --tags 饮酒,晚餐晚
 python scripts/heartwork.py coach "跑完腿沉，明天怎么练"      # 内置 AI 内核作答并核验
 python scripts/heartwork.py model                           # 查看 AI 内核设置
 python scripts/heartwork.py checkin --type morning_checkin --recovery 6 --pain 2 --note "右小腿紧"
@@ -171,7 +200,8 @@ Heartwork 用于个人趋势记录、运动教育与研究，不提供医学诊�
 ## 项目结构
 
 ```text
-scripts/            核心实现：基线、导入、教练运行层、AI 内核（llm / coach_agent）、API、命令行、MCP、网页与桌面
+scripts/            核心实现：基线、导入与活动流分析（streams）、身体判断（insights）、intervals.icu 同步、
+                    晨报（brief）、教练运行层、AI 内核（llm / coach_agent）、API、命令行、MCP、网页与桌面
 scripts/web/        本机网页（单文件，不依赖外部资源）
 skills/             8 项专项技能与路由表
 integrations/       Claude / ChatGPT / Gemini / Codex / DeepSeek Harness 接入说明
