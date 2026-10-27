@@ -18,8 +18,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 import api
+import coach_agent
 import coach_runtime
 import coach_skills
+import llm
 import store
 
 
@@ -130,6 +132,7 @@ def make_handler(base):
                 "/api/autonomy": lambda: api.get_autonomy(base),
                 "/api/decisions": lambda: api.decisions(base),
                 "/api/provenance": lambda: api.provenance(base, query["date"], query.get("metric")),
+                "/api/llm": lambda: llm.public(base),
             }
             if url.path not in routes:
                 return self._send(404, {"error": "not found"})
@@ -140,6 +143,15 @@ def make_handler(base):
             if path == "/api/upload":
                 return self._upload()
             body = self._json_body()
+            if path == "/api/coach":
+                return self._coach_stream(body)
+            if path == "/api/llm":
+                return self._send(200, llm.save(base, body))
+            if path == "/api/llm/test":
+                try:
+                    return self._send(200, llm.ping(base))
+                except llm.LLMError as exc:
+                    return self._send(200, {"ok": False, "error": str(exc)})
             if path == "/api/ask":
                 job = api.start_job(base, body.get("query", ""), body.get("task") or None,
                                     body.get("as_of") or None)
@@ -147,7 +159,7 @@ def make_handler(base):
             if path == "/api/complete":
                 response = body.get("response")
                 if isinstance(response, str):
-                    response = _parse_loose_json(response)
+                    response = coach_agent.parse_loose_json(response)
                 return self._send(200, api.complete_job(base, body.get("job_id", ""), response))
             if path == "/api/checkin":
                 return self._send(200, api.log_event(base, body))
@@ -167,6 +179,28 @@ def make_handler(base):
             if path == "/api/demo":
                 return self._send(200, api.init(base, demo=True))
             return self._send(404, {"error": "not found"})
+
+        def _coach_stream(self, body):
+            """Server-sent events while the built-in coach answers and gets validated."""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+
+            def emit(event):
+                try:
+                    self.wfile.write(("data: %s\n\n" % json.dumps(event, ensure_ascii=False))
+                                     .encode("utf-8"))
+                    self.wfile.flush()
+                except OSError:
+                    pass  # the page went away; the job still finishes and is saved
+
+            try:
+                coach_agent.run(base, body.get("query", ""), body.get("task") or None,
+                                body.get("as_of") or None, emit)
+            except (ValueError, KeyError, FileNotFoundError) as exc:
+                emit({"type": "error", "message": str(exc)})
 
         def _upload(self):
             length = int(self.headers.get("Content-Length") or 0)
@@ -190,19 +224,6 @@ def make_handler(base):
             return self._send(200, result)
 
     return Handler
-
-
-def _parse_loose_json(text):
-    """Accept a pasted reply wrapped in prose or a ```json fence."""
-    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
-    if fenced:
-        text = fenced.group(1)
-    else:
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            raise ValueError("回复里没有找到 JSON 对象")
-        text = text[start:end + 1]
-    return json.loads(text)
 
 
 def main(argv=None):

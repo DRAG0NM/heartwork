@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import api  # noqa: E402
+import llm  # noqa: E402
 
 
 def _print(value):
@@ -51,6 +52,37 @@ def install_skills(target, dest=None):
             handle.write((old.rstrip("\n") + "\n\n" if old.strip() else "") + "\n".join(lines) + "\n")
         result["gemini_md"] = path
     return result
+
+
+def _coach(home, args):
+    import coach_agent
+
+    def emit(event):
+        kind = event["type"]
+        if kind == "job":
+            print("[%s · %s] 任务 %s　安全门 %s　技能 %s" % (
+                event["provider"], event["model"], event["task"], event["gate"],
+                ", ".join(event["skills"])), file=sys.stderr)
+        elif kind == "attempt":
+            print("第 %d 次作答…" % event["n"], file=sys.stderr, flush=True)
+        elif kind == "text":
+            sys.stderr.write(".")
+            sys.stderr.flush()
+        elif kind == "rejected":
+            print("\n核验拒绝：" + "；".join("[%s] %s" % (item["code"], item["message"])
+                                         for item in event["errors"][:5]), file=sys.stderr)
+        elif kind == "done":
+            print("\n通过核验（第 %d 次）\n" % event["attempts"], file=sys.stderr)
+
+    result = coach_agent.run(home, args.question, args.task, args.as_of, emit)
+    if result["type"] != "done":
+        print("\n%s" % result["message"], file=sys.stderr)
+        return 1
+    print(result["markdown"])
+    pending = [item["key"] for item in result["suggestions"] if item["status"] == "pending"]
+    if pending:
+        print("待决建议：%s（去网页或用 decide 确认）" % ", ".join(pending))
+    return 0
 
 
 def build_parser():
@@ -107,6 +139,18 @@ def build_parser():
     profile.add_argument("--hr-rest", type=float)
     profile.add_argument("--goal")
     profile.add_argument("--notes")
+    coach = commands.add_parser("coach", help="内置 AI 教练：调用模型 API 作答并自动核验")
+    coach.add_argument("question", nargs="?", default="")
+    coach.add_argument("--task")
+    coach.add_argument("--as-of")
+    model = commands.add_parser("model", help="查看或设置 AI 内核（服务商、模型、Key）")
+    model.add_argument("--provider", choices=sorted(llm.PRESETS))
+    model.add_argument("--model")
+    model.add_argument("--base-url")
+    model.add_argument("--api-key")
+    model.add_argument("--attempts", type=int, help="核验失败后最多作答几次（1-6）")
+    model.add_argument("--test", action="store_true", help="发一条消息测试连通")
+    commands.add_parser("desktop", help="以桌面窗口打开（需要 pywebview）")
     web = commands.add_parser("web", help="启动本机网页（127.0.0.1）")
     web.add_argument("--port", type=int, default=8765)
     mcp = commands.add_parser("mcp", help="启动 MCP 服务")
@@ -180,6 +224,24 @@ def run(args):
             ("hr_max", args.hr_max), ("hr_rest", args.hr_rest),
             ("goal", args.goal), ("notes", args.notes)) if value is not None}
         return _print(api.set_profile(home, fields) if fields else api.get_profile(home))
+    if command == "coach":
+        return _coach(home, args)
+    if command == "model":
+        fields = {key: value for key, value in (
+            ("provider", args.provider), ("model", args.model), ("base_url", args.base_url),
+            ("api_key", args.api_key), ("max_attempts", args.attempts)) if value is not None}
+        if fields:
+            llm.save(home, fields)
+        if args.test:
+            try:
+                return _print(llm.ping(home))
+            except llm.LLMError as exc:
+                print("连接失败：%s" % exc, file=sys.stderr)
+                return 1
+        return _print(llm.public(home)["config"])
+    if command == "desktop":
+        import desktop
+        return desktop.main(["--home", home] if home else [])
     if command == "web":
         import web
         return web.main(["--home", home, "--port", str(args.port)] if home else ["--port", str(args.port)])

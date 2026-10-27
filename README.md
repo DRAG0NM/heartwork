@@ -4,10 +4,10 @@
 
 <p align="center"><b>以你本人为基准的健康画布，与只依据证据发言的 AI 教练。</b></p>
 
-<p align="center"><sub>本地运行 · 零依赖 · 支持 Claude / ChatGPT / Gemini / Codex / DeepSeek · Apache-2.0</sub></p>
+<p align="center"><sub>本地运行 · 内置 AI 内核 · 网页与桌面 · 支持 Claude / ChatGPT / Gemini / Codex / DeepSeek · Apache-2.0</sub></p>
 
 <p align="center">
-  <a href="#开始使用">开始使用</a> ｜ <a href="#接入-ai">接入 AI</a> ｜ <a href="#有据可依的-ai-教练">证据机制</a> ｜ <a href="#授权由你设定">授权档位</a> ｜ <a href="CHANGELOG.md">更新记录</a>
+  <a href="#开始使用">开始使用</a> ｜ <a href="#内置-ai-内核">AI 内核</a> ｜ <a href="#接入外部-ai">接入外部 AI</a> ｜ <a href="#有据可依的-ai-教练">证据机制</a> ｜ <a href="#授权由你设定">授权档位</a> ｜ <a href="CHANGELOG.md">更新记录</a>
 </p>
 
 Heartwork 读取你从手表和健康应用导出的数据，在本机算出每项指标相对你个人常态的位置，每天生成一幅画布，再把经过确定性处理的上下文交给你选用的 AI。AI 的每条结论都必须指向具体数据，并通过代码核验。训练计划的修改权限由你设定。
@@ -37,7 +37,7 @@ Heartwork 不用人群平均值评判个人。
 
 ## 有据可依的 AI 教练
 
-Heartwork 不内置模型，而是给你选用的 AI 定下一套必须遵守的规则。
+Heartwork 给 AI 定下一套必须遵守的规则。无论是内置 AI 内核，还是你接入的外部 agent，都要按这套规则作答。
 
 | 机制 | 作用 |
 |---|---|
@@ -69,7 +69,8 @@ Heartwork 不内置模型，而是给你选用的 AI 定下一套必须遵守的
 
 - 工作区默认在 `~/.heartwork`，和代码仓库分开存放。
 - 网页只监听 `127.0.0.1`，会校验请求来源，不加载任何外部资源。
-- 零第三方依赖，不含任何厂商账号或数据抓取接口。
+- 核心零第三方依赖，不含任何厂商账号或数据抓取接口；桌面窗口需要另装 `pywebview`。
+- 内置 AI 内核用云端模型时，本次作业的 coach_context（近期指标、打卡、计划）会发给你选的服务商；选 Ollama 则全程留在本机。API Key 只存在工作区的 `llm.json`，任何界面都不回显。
 - 每个导入的文件都记在 `imports.json` 里，包括文件名、SHA-256 和写入的条数。
 
 ## 开始使用
@@ -97,7 +98,20 @@ python scripts/heartwork.py profile --hr-max 188 --hr-rest 48   # 填写最大�
 
 Apple Health 记录的 HRV 是 SDNN，和 Heartwork 使用的 RMSSD 口径不同，导入时会自动跳过。
 
-## 接入 AI
+## 内置 AI 内核
+
+Heartwork 可以直接调用模型 API 作答，不需要外部 agent。支持任何 OpenAI 兼容接口（DeepSeek、OpenAI、Kimi、通义千问、Ollama 本机模型）和 Anthropic 原生接口，全部用标准库实现。
+
+```bash
+python scripts/heartwork.py model --provider deepseek --api-key sk-...   # 也可用环境变量 DEEPSEEK_API_KEY
+python scripts/heartwork.py model --test                                 # 测试连通
+python scripts/heartwork.py coach "今天适合跑间歇吗"                       # 命令行直接问
+python scripts/heartwork.py desktop                                      # 桌面窗口（需要 pip install pywebview）
+```
+
+网页和桌面窗口里点「问 AI」，回答会实时流式显示。每次作答都要经过签名校验和证据核验；没通过时，核验错误会回传给模型重写，默认最多 3 次。仍没通过的回答不展示。每次作答的记录保存在 `jobs/<job_id>.agent.json`。
+
+## 接入外部 AI
 
 ```bash
 claude mcp add heartwork -- python scripts/heartwork.py mcp        # Claude Code
@@ -128,6 +142,8 @@ python scripts/heartwork.py install-skills --target claude   # 也支持 dsh / a
 
 ```bash
 python scripts/heartwork.py status                          # 工作区概况
+python scripts/heartwork.py coach "跑完腿沉，明天怎么练"      # 内置 AI 内核作答并核验
+python scripts/heartwork.py model                           # 查看 AI 内核设置
 python scripts/heartwork.py checkin --type morning_checkin --recovery 6 --pain 2 --note "右小腿紧"
 python scripts/heartwork.py report                          # 生成本周 Obsidian 周报告
 python scripts/heartwork.py suggestions                     # 待确认的建议
@@ -154,7 +170,7 @@ Heartwork 用于个人趋势记录、运动教育与研究，不提供医学诊�
 ## 项目结构
 
 ```text
-scripts/            核心实现：基线、导入、教练运行层、API、命令行、MCP、网页服务
+scripts/            核心实现：基线、导入、教练运行层、AI 内核（llm / coach_agent）、API、命令行、MCP、网页与桌面
 scripts/web/        本机网页（单文件，不依赖外部资源）
 skills/             8 项专项技能与路由表
 integrations/       Claude / ChatGPT / Gemini / Codex / DeepSeek Harness 接入说明

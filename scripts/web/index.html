@@ -159,6 +159,17 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
 .read svg{width:120px;height:46px;border-radius:8px;background:var(--art-bg)}
 .poster-grid{margin:16px 0}
 .poster-grid svg{width:100%;height:auto;border-radius:8px;border:1px solid var(--line)}
+.live .trace{display:grid;gap:6px;margin-top:14px}
+.live .beat{display:flex;gap:10px;align-items:baseline;font-size:13px;color:var(--ink-2)}
+.live .beat::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--line-2);transform:translateY(-1px)}
+.live .beat.ok::before{background:var(--good)}
+.live .beat.no::before{background:var(--alarm)}
+.live .beat.run::before{background:var(--f-recovery);animation:pulse 1s ease-in-out infinite}
+.live .beat code{font-family:var(--mono);font-size:11.5px;color:var(--alarm)}
+.live .stream{margin-top:10px;font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--ink-3);max-height:4.5em;overflow:hidden;white-space:pre-wrap;word-break:break-all;-webkit-mask-image:linear-gradient(transparent,#000 60%);mask-image:linear-gradient(transparent,#000 60%)}
+.live .think{font-style:italic;color:var(--ink-3);font-size:12.5px;margin-top:6px;max-height:3em;overflow:hidden}
+@keyframes pulse{50%{opacity:.25}}
+.keynote{font-size:12px;color:var(--strain);margin:4px 0 0}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
 </head>
@@ -192,9 +203,10 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
         <option value="post_workout">训练后</option><option value="weekly_review">周复盘</option>
         <option value="pain_followup">疼痛跟进</option>
       </select>
-      <button class="primary" type="submit">生成作业</button>
+      <button type="button" id="jobBtn" title="不调用模型，只生成签名作业，提示词可交给任意 AI">生成作业</button>
+      <button class="primary" type="submit" id="aiBtn">问 AI</button>
     </form>
-    <p class="hint">作业里只有确定性计算的数据和规则。把提示词交给任意 AI（ChatGPT、Gemini、Claude、DeepSeek…），再把它的 JSON 回复贴回来验证；接了 MCP 的 agent 提交后也会自动出现在这里。</p>
+    <p class="hint">「问 AI」由内置 AI 内核直接作答：每条结论都要过确定性核验，没过就带着错误让模型重写，最终没过的不展示。「生成作业」则把提示词交给任意外部 AI 或 MCP agent。</p>
     <div id="jobs"></div>
   </section>
 </main>
@@ -215,6 +227,16 @@ details summary{cursor:pointer;color:var(--ink-3);font-size:12.5px}
 
   <h3>多维状态（实验层）</h3>
   <div class="axes" id="axes"></div>
+
+  <h3>AI 内核</h3>
+  <form class="form" id="llmForm">
+    <label>服务商<select name="provider"></select></label>
+    <div class="two"><label>模型<input name="model" autocomplete="off" spellcheck="false"></label><label>核验失败重写<select name="max_attempts"><option value="1">不重写</option><option value="2">最多 2 次</option><option value="3">最多 3 次</option><option value="4">最多 4 次</option></select></label></div>
+    <label>接口地址<input name="base_url" autocomplete="off" spellcheck="false"></label>
+    <label>API Key <span class="muted" id="keyHint"></span><input name="api_key" type="password" autocomplete="off" placeholder="留空保持不变；也可用环境变量"></label>
+    <p class="keynote" id="cloudNote" hidden>云端模型会收到本次作业的 coach_context（近期指标、打卡、计划）。只想留在本机，选 Ollama。</p>
+    <div class="row"><button type="submit">保存</button><button type="button" id="llmTest">测试连接</button><span class="small muted" id="llmState"></span></div>
+  </form>
 
   <h3>教练权限</h3>
   <div class="seg" id="autoSeg" role="radiogroup" aria-label="教练权限档位"></div>
@@ -305,7 +327,7 @@ const AXIS_FAM={recovery_autonomic:"recovery",sleep_circadian:"sleep",training_l
 const RED_FLAGS={chest_pain:"胸痛",palpitations:"心悸",fainting:"晕厥",joint_deformity:"关节畸形",cannot_bear_weight:"无法承重",severe_breathing_difficulty:"严重呼吸困难"};
 const TASK_LABEL={daily_guidance:"今日建议",post_workout:"训练后",weekly_review:"周复盘",pain_followup:"疼痛跟进"};
 const ACTION_LABEL={ask:"追问",maintain:"维持",reduce:"减量",rest:"休息",suggest_session:"建议课",protective_activity:"保护性活动",draft_plan:"计划草案",seek_professional_help:"就医咨询",seek_emergency_help:"立即就医"};
-const S={hist:null,snap:null,day:null,pinned:null,metric:"hrv_rmssd",jobs:new Map()};
+const S={hist:null,snap:null,day:null,pinned:null,metric:"hrv_rmssd",jobs:new Map(),live:new Set(),llmReady:false};
 
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const fmtDate=d=>d?`${+d.slice(4,6)}月${+d.slice(6)}日`:"";
@@ -600,9 +622,48 @@ function jobCard(job){
   }
   wireEvidence(card);S.jobs.set(job.job_id,done);
 }
+async function askAI(body){
+  const card=document.createElement("div");card.className="job live";$("#jobs").prepend(card);
+  card.innerHTML=`<p class="q">${esc(body.query||"（无问题，按任务默认）")}</p><div class="meta" data-meta><span class="tag">连接 AI 内核…</span></div><div class="trace" data-trace></div><div class="think" data-think hidden></div><div class="stream" data-stream></div>`;
+  card.scrollIntoView({behavior:"smooth",block:"start"});
+  const trace=card.querySelector("[data-trace]"),stream=card.querySelector("[data-stream]"),think=card.querySelector("[data-think]");
+  let beat=null,buf="",tbuf="",jobId=null;
+  const add=(cls,html)=>{if(beat)beat.classList.remove("run");beat=document.createElement("div");beat.className="beat "+cls;beat.innerHTML=`<span>${html}</span>`;trace.append(beat);return beat};
+  const on=async ev=>{
+    if(ev.type==="job"){jobId=ev.job_id;card.id=jobId;S.live.add(jobId);
+      card.querySelector("[data-meta]").innerHTML=`<span class="tag">${TASK_LABEL[ev.task]||ev.task}</span><span class="tag ${ev.gate}">安全门 ${({green:"绿",yellow:"黄",red:"红"})[ev.gate]}</span>${ev.skills.map(s=>`<span class="tag">${esc(s)}</span>`).join("")}<span>${esc(ev.model)}</span>`;
+      add("ok","作业已签名，安全门在模型作答前判定")}
+    else if(ev.type==="attempt"){buf="";tbuf="";stream.textContent="";think.hidden=true;add("run",`第 ${ev.n} 次作答 <span class="num muted" data-n></span>`)}
+    else if(ev.type==="thinking"){tbuf+=ev.text;think.hidden=false;think.textContent=tbuf.slice(-240)}
+    else if(ev.type==="text"){buf+=ev.text;stream.textContent=buf.slice(-600);const n=beat&&beat.querySelector("[data-n]");if(n)n.textContent=buf.length+" 字"}
+    else if(ev.type==="rejected"){beat.classList.replace("run","no");
+      add("no",`核验拒绝，带着错误让模型重写<br>${ev.errors.slice(0,4).map(e=>`<code>${esc(e.code)}</code> ${esc(e.path)} ${esc(e.message)}`).join("<br>")}`)}
+    else if(ev.type==="done"){if(beat)beat.classList.replace("run","ok");const steps=trace.innerHTML;S.live.delete(jobId);
+      const full=await api("/api/job?id="+encodeURIComponent(jobId));jobCard(full);
+      const c=document.getElementById(jobId);c.classList.add("live");c.insertAdjacentHTML("beforeend",`<div class="trace">${steps}<div class="beat ok">第 ${ev.attempts} 次作答通过确定性核验</div></div>`);
+      loadSuggs();loadPlan();const na=(ev.auto_applied||[]).length,np=ev.suggestions.length-na;
+      toast(na?`激进档已自动改计划 ${na} 条，可在右栏撤销`:np?`有 ${np} 条改计划建议等你确认`:"已通过核验")}
+    else if(ev.type==="failed"||ev.type==="error"){if(beat)beat.classList.replace("run","no");stream.remove();think.remove();if(jobId)S.live.delete(jobId);
+      card.insertAdjacentHTML("beforeend",`<div class="errors">${esc(ev.message)}${ev.type==="error"?"<br>检查右栏「AI 内核」的设置，或改用「生成作业」。":""}</div>`)}
+  };
+  try{
+    const res=await fetch("/api/coach",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!res.ok)throw new Error((await res.json()).error||res.statusText);
+    const reader=res.body.getReader(),dec=new TextDecoder();let rest="";
+    for(;;){const {done,value}=await reader.read();if(done)break;rest+=dec.decode(value,{stream:true});
+      let i;while((i=rest.indexOf("\n\n"))>=0){const chunk=rest.slice(0,i);rest=rest.slice(i+2);if(chunk.startsWith("data:"))await on(JSON.parse(chunk.slice(5)))}}
+  }catch(e){await on({type:"error",message:e.message})}
+}
+async function loadLLM(){
+  const {config:c,presets}=await api("/api/llm"),f=$("#llmForm");
+  f.provider.innerHTML=presets.map(p=>`<option value="${p.name}">${esc(p.label)}</option>`).join("");
+  f.provider.value=c.provider;f.model.value=c.model;f.base_url.value=c.base_url;f.max_attempts.value=String(Math.min(4,c.max_attempts));f.api_key.value="";
+  $("#keyHint").textContent=c.key_set?`已设置 ${c.key_hint}`:c.local?"本机模型可不填":"未设置";
+  $("#cloudNote").hidden=c.local;$("#llmState").textContent=c.ready?"就绪":"未就绪";S.llmReady=c.ready;
+}
 async function loadJobs(){
   const {items}=await api("/api/jobs");
-  for(const j of items.slice(-8)){if(S.jobs.get(j.job_id)===j.completed)continue;if(S.jobs.has(j.job_id)&&!j.completed)continue;jobCard(await api("/api/job?id="+encodeURIComponent(j.job_id)))}
+  for(const j of items.slice(-8)){if(S.live.has(j.job_id))continue;if(S.jobs.get(j.job_id)===j.completed)continue;if(S.jobs.has(j.job_id)&&!j.completed)continue;jobCard(await api("/api/job?id="+encodeURIComponent(j.job_id)))}
 }
 
 /* ---------- suggestions: the human seal ---------- */
@@ -654,7 +715,15 @@ function wireForms(){
     try{await api("/api/checkin",ev);toast("已记下");f.note.value="";await refresh(false)}catch(err){toast(err.message)}};
   const pf=$("#profile");api("/api/profile").then(p=>{pf.hr_max.value=p.hr_max??"";pf.hr_rest.value=p.hr_rest??"";pf.goal.value=p.goal??""});
   pf.onsubmit=async e=>{e.preventDefault();const b={goal:pf.goal.value};if(pf.hr_max.value)b.hr_max=+pf.hr_max.value;if(pf.hr_rest.value)b.hr_rest=+pf.hr_rest.value;try{await api("/api/profile",b);toast("档案已保存")}catch(err){toast(err.message)}};
-  $("#askForm").onsubmit=async e=>{e.preventDefault();try{const job=await api("/api/ask",{query:$("#askInput").value.trim(),task:$("#askTask").value,as_of:S.snap.week.as_of});$("#askInput").value="";jobCard(job);
+  $("#askForm").onsubmit=e=>{e.preventDefault();
+    if(!S.llmReady){toast("先在右栏「AI 内核」里选模型、填 Key");$("#llmForm").scrollIntoView({behavior:"smooth",block:"center"});return}
+    const body={query:$("#askInput").value.trim(),task:$("#askTask").value,as_of:S.snap.week.as_of};$("#askInput").value="";askAI(body)};
+  const lf=$("#llmForm");
+  lf.provider.onchange=async()=>{try{await api("/api/llm",{provider:lf.provider.value});await loadLLM();toast("已切换服务商")}catch(err){toast(err.message)}};
+  lf.onsubmit=async e=>{e.preventDefault();const b={model:lf.model.value,base_url:lf.base_url.value,max_attempts:+lf.max_attempts.value};if(lf.api_key.value)b.api_key=lf.api_key.value;
+    try{await api("/api/llm",b);await loadLLM();toast("AI 内核已保存")}catch(err){toast(err.message)}};
+  $("#llmTest").onclick=async()=>{$("#llmState").textContent="测试中…";try{const r=await api("/api/llm/test",{});$("#llmState").textContent=r.ok?`通了：${r.reply}`:"失败";if(!r.ok)toast(r.error)}catch(err){$("#llmState").textContent="失败";toast(err.message)}};
+  $("#jobBtn").onclick=async e=>{e.preventDefault();try{const job=await api("/api/ask",{query:$("#askInput").value.trim(),task:$("#askTask").value,as_of:S.snap.week.as_of});$("#askInput").value="";jobCard(job);
     $("#"+CSS.escape(job.job_id)).scrollIntoView({behavior:"smooth",block:"start"})}catch(err){toast(err.message)}};
   $("#evalBtn").onclick=async()=>{const r=await api("/api/eval");$("#evalOut").textContent=`${r.passed}/${r.total} 个固定场景通过${r.passed===r.total?"，硬门禁成立":""}`};
   const drop=$("#drop"),file=$("#file");
@@ -752,6 +821,7 @@ async function refresh(animate=true){
 }
 try{const t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch{}
 wireForms();wireExtras();
+loadLLM().catch(()=>{});
 refresh().then(loadJobs).catch(e=>{$("#dayTitle").textContent="连接本机服务失败";$("#caption").textContent=e.message});
 setInterval(()=>loadJobs().catch(()=>{}),8000);
 </script>
