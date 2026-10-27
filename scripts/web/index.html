@@ -113,7 +113,25 @@ aside h3{font-size:12px;letter-spacing:.08em;color:var(--ink-3);font-weight:500;
 aside h3:first-child{margin-top:0}
 .glance{display:grid;grid-template-columns:118px 1fr;gap:14px;align-items:center}
 .glance .big{font-family:var(--serif);font-size:19px;line-height:1.35}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips{display:grid;gap:1px}
+.contrib{display:grid;grid-template-columns:7px 64px minmax(0,1fr) 118px;gap:10px;align-items:center;width:100%;border:0;border-radius:6px;padding:5px 8px;text-align:left;font-size:13px;line-height:1.3;background:none;color:var(--ink)}
+.contrib:hover,.contrib.sel{background:var(--paper)}
+.contrib.sel{box-shadow:inset 2px 0 0 var(--ink-2)}
+.contrib .dot{width:7px;height:7px;border-radius:50%}
+.contrib .bar{position:relative;height:3px;background:var(--line);border-radius:2px}
+.contrib .bar .band{position:absolute;top:-3px;bottom:-3px;left:41.67%;width:16.66%;background:var(--line-2);border-radius:2px}
+.contrib .bar .mk{position:absolute;top:-5px;width:3px;height:13px;border-radius:2px;margin-left:-1.5px;background:var(--ink-3);transition:left .5s var(--ease)}
+.contrib .v{text-align:right;font-variant-numeric:tabular-nums}
+.contrib .v b{font-weight:500}
+.contrib .v small{display:inline-block;min-width:4.6em;margin-left:8px;font-size:11.5px;color:var(--ink-3);text-align:left}
+.contrib.good .mk{background:var(--good)}.contrib.good .v small{color:var(--good)}
+.contrib.strain .mk{background:var(--strain)}.contrib.strain .v small{color:var(--strain)}
+.contrib.off{opacity:.55}
+.loadsum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px;padding:10px 8px 0;border-top:1px solid var(--line)}
+.loadsum div{font-size:11px;color:var(--ink-3)}
+.loadsum b{display:block;font-family:var(--serif);font-size:16px;font-weight:400;color:var(--ink);font-variant-numeric:tabular-nums}
+.sugg .act-text{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.sugg .act-text.open{display:block}
 .chip{border-radius:8px;padding:4px 9px;font-size:12.5px;border:1px solid transparent;cursor:pointer;line-height:1.35;text-align:left}
 .chip small{display:block;font-size:11px;opacity:.8}
 .chip.good{background:var(--good-bg);color:var(--good)}
@@ -347,6 +365,9 @@ function row(day){return S.hist.daily.find(r=>r.date===day)||{date:day}}
 const SWC_Z=.5;
 function beyond(z){return z==null?0:Math.sign(z)*Math.max(0,Math.abs(z)-SWC_Z)}
 const STATUS_TEXT={above:"高于常态",below:"低于常态",within:"在正常波动内"};
+const BS_FIELD={recent_mean:"7日均",center:"常态",band:"常态带",status:"判定",z:"偏离",value:"当日"};
+const ACT_FIELD={type:"类型",date:"日期",start:"开始",distance_m:"距离",duration_s:"时长",avg_hr:"均心率",hr_zone_minutes:"心率区间",load:"负荷",training_load:"负荷"};
+const EV_FIELD={pain:"疼痛",rpe:"RPE",subjective_recovery:"主观恢复",note:"备注",illness:"生病"};
 
 /* ---------- seeded noise ---------- */
 function rng(seed){let a=seed>>>0;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -507,16 +528,18 @@ function drawChips(){
   const box=$("#chips");box.innerHTML="";const day=S.snap.week.as_of,ms=S.dayIdx[day]?.metrics||{};
   for(const k of Object.keys(METRIC)){
     const m=ms[k];if(!m||m.value==null&&m.recent_mean==null)continue;const M=METRIC[k];
-    const b=document.createElement("button");b.className=`chip ${tone(m.oriented)}${S.metric===k?" sel":""}`;b.dataset.fam=M.fam;
-    b.innerHTML=`${esc(M.label)} <b class="num">${r1(m.value??m.recent_mean)}</b><small>${m.status?STATUS_TEXT[m.status]:"基线不足"}</small>`;
+    const rolling=(m.aggregate||"").startsWith("rolling"),shown=rolling?m.recent_mean:(m.value??m.recent_mean);
+    const word=!m.status?"基线不足":m.oriented==="better"?"好于常态":m.oriented==="worse"?"需留意":m.oriented==="normal"?"正常":({above:"偏高",below:"偏低",within:"正常"})[m.status];
+    const z=m.z==null?null:Math.max(-3,Math.min(3,m.z)),pos=z==null?50:50+z/3*50;
+    const b=document.createElement("button");b.className=`contrib ${m.status?tone(m.oriented):"off"}${S.metric===k?" sel":""}`;b.dataset.fam=M.fam;
+    b.innerHTML=`<i class="dot" style="background:var(--f-${M.fam})"></i><span>${esc(M.label)}</span><span class="bar">${m.status?`<i class="band"></i><i class="mk" style="left:${pos}%"></i>`:""}</span><span class="v"><b>${r1(shown)}</b><small>${rolling&&m.status?"7日均"+word:word}</small></span>`;
     b.title=m.center!=null?`近 7 天 ${r1(m.recent_mean)} · 常态 ${r1(m.band[0])}–${r1(m.band[1])}（中位 ${r1(m.center)}，超出最小有意义变化才算高/低）`:"基线不足 7 天";
     b.onclick=()=>{S.metric=k;drawChips();drawSpark()};b.onmouseenter=()=>focusFam(M.fam);b.onmouseleave=()=>focusFam(S.pinned);
     box.appendChild(b);
   }
   const L=S.view.load_summary;
-  if(L&&L.ctl!=null){const d=document.createElement("div");d.className="small muted";d.style.cssText="flex-basis:100%;margin-top:4px";
-    const ac=L.acwr_uncoupled?` · 急慢比 ${r1(L.acwr_uncoupled.ratio)}`:"";
-    d.innerHTML=`负荷　疲劳 ATL <b class="num">${r1(L.atl)}</b> · 体能 CTL <b class="num">${r1(L.ctl)}</b> · 状态 TSB <b class="num">${L.tsb>=0?"+":""}${r1(L.tsb)}</b>${ac}`;box.appendChild(d)}
+  if(L&&L.ctl!=null){const d=document.createElement("div");d.className="loadsum";
+    d.innerHTML=`<div title="急性负荷，近 7 天">疲劳 ATL<b>${r1(L.atl)}</b></div><div title="慢性负荷，近 42 天">体能 CTL<b>${r1(L.ctl)}</b></div><div title="体能减疲劳">状态 TSB<b>${L.tsb>=0?"+":""}${r1(L.tsb)}</b></div><div title="急性 / 慢性，非耦合">急慢比<b>${L.acwr_uncoupled?r1(L.acwr_uncoupled.ratio):"—"}</b></div>`;box.appendChild(d)}
 }
 function drawSpark(){
   const svg=$("#spark");svg.innerHTML="";const k=S.metric,m=METRIC[k]||{label:k,unit:""};
@@ -568,15 +591,18 @@ function evMeta(ctx,ptr){
   const p=ptr.split("/").slice(1);let fam=null,label=ptr,date=ctx.as_of;
   if(p[0]==="views"&&p[1]==="raw_signals"){const it=ctx.views.raw_signals[+p[2]];if(it){fam=(METRIC[it.key]||{}).fam;label=it.label;date=it.latest_date||date}}
   else if(p[0]==="views"&&p[1]==="recent_daily"){const r=ctx.views.recent_daily[+p[2]];fam=(METRIC[p[3]]||{}).fam;label=(METRIC[p[3]]||{label:p[3]}).label;date=r?r.date:date}
-  else if(p[0]==="views"&&p[1]==="state"){const a=(ctx.views.state.axes||[])[+p[3]];fam=a?AXIS_FAM[a.id]:null;label=a?a.label+"（实验）":"状态"}
-  else if(p[0]==="recent_events"){fam="event";label="你的打卡"}
+  else if(p[0]==="views"&&p[1]==="state"){const a=(ctx.views.state.axes||[])[+p[3]];fam=a?AXIS_FAM[a.id]:null;label=a?a.label+(p.length>5?" "+(p[p.length-1]||"").toUpperCase():"")+"（实验）":"状态"}
+  else if(p[0]==="views"&&p[1]==="baseline_status"){const it=ctx.views.baseline_status[+p[2]];if(it){fam=(METRIC[it.key]||{}).fam;label=(METRIC[it.key]||{label:it.label}).label+" "+(BS_FIELD[p[3]]||p[3]||"")}}
+  else if(p[0]==="views"&&p[1]==="activities"){const a=ctx.views.activities[+p[2]];fam="load";label=(a&&a.type||"训练")+" "+(ACT_FIELD[p[3]]||p[3]||"");date=a&&a.date||date}
+  else if(p[0]==="data_status"){label="数据状态"}
+  else if(p[0]==="recent_events"){fam="event";label="你的打卡"+(p[2]&&EV_FIELD[p[2]]?" "+EV_FIELD[p[2]]:"")}
   else if(p[0]==="safety_gate"){fam="gate";label="安全门"}
   else if(p[0]==="views"&&p[1]==="current_plan"){label="当前计划"}
   return {fam,label,date};
 }
 function evChips(ctx,items){
   return (items||[]).map(it=>{const m=evMeta(ctx,it.pointer||"");const v=it.observed_value;
-    const val=typeof v==="number"?r1(v):typeof v==="string"&&v.length>14?v.slice(0,12)+"…":v;
+    const val=typeof v==="number"?r1(v):Array.isArray(v)?v.map(x=>typeof x==="number"?r1(x):x).join(" / "):typeof v==="string"&&v.length>14?v.slice(0,12)+"…":v;
     const color=m.fam&&FAM[m.fam]?`var(--f-${m.fam})`:m.fam==="event"||m.fam==="gate"?"var(--alarm)":"var(--ink-3)";
     return `<span class="ev" data-fam="${m.fam||""}" data-date="${m.date||""}" title="${esc(it.pointer)} · ${esc(it.layer)}"><i style="background:${color}"></i>${esc(m.label)} ${val!==undefined?`<b class="num">${esc(val)}</b>`:""}</span>`}).join("");
 }
@@ -681,9 +707,11 @@ async function loadSuggs(){
       box.appendChild(c);continue}
     c.className="card sugg";
     const blocked=(s.auto_blocked||[]).length?`<div class="small muted" style="margin-bottom:6px">没有自动生效：${s.auto_blocked.map(b=>BLOCK_TEXT[b]||esc(b)).join("、")}</div>`:"";
-    c.innerHTML=`<div class="serif">${esc(s.recommendation.action)}</div><div class="small muted" style="margin:4px 0 8px">${esc(s.key)} · 来自 ${esc(s.job_id)}</div>${blocked}
+    const from=/job_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(s.job_id||"");
+    c.innerHTML=`<div class="serif act-text" title="点击展开">${esc(s.recommendation.action)}</div><div class="small muted" style="margin:4px 0 8px" title="${esc(s.key)} · ${esc(s.job_id)}">来自 ${from?`${+from[2]}月${+from[3]}日 ${from[4]}:${from[5]}`:"教练"} 的回答</div>${blocked}
     <div class="row"><button class="primary" data-a>接受</button><button data-r>拒绝</button></div>
     <div data-apply hidden class="form" style="margin-top:8px"><textarea rows="3" placeholder="写下新的计划全文"></textarea><label class="check"><input type="checkbox">我确认用这段文字替换当前计划</label><button data-go>应用到计划</button></div>`;
+    c.querySelector(".act-text").onclick=e=>e.currentTarget.classList.toggle("open");
     c.querySelector("[data-a]").onclick=async()=>{await api("/api/decide",{key:s.key,accept:true});c.querySelector("[data-apply]").hidden=false;c.querySelector("textarea").value=s.recommendation.plan_text||$("#plan").textContent;toast("已接受，可以改写计划了")};
     c.querySelector("[data-r]").onclick=async()=>{await api("/api/decide",{key:s.key,accept:false});loadSuggs();toast("已拒绝并留痕")};
     c.querySelector("[data-go]").onclick=async()=>{const ok=c.querySelector("[data-apply] input").checked;if(!ok){toast("需要勾选确认");return}
