@@ -155,7 +155,7 @@ def list_jobs(base=None):
     names = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
     jobs = []
     for name in names:
-        if not name.endswith(".json") or name.endswith(".response.json"):
+        if not name.endswith(".json") or name.endswith((".response.json", ".agent.json")):
             continue
         job = store.read_json(os.path.join(folder, name)) or {}
         done = os.path.exists(os.path.join(folder, name[:-5] + ".response.json"))

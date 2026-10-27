@@ -2,140 +2,156 @@
   <img src="docs/images/banner.svg" alt="Heartwork 健康画布" width="100%">
 </p>
 
-<p align="center"><b>以你本人为基准的健康画布，与只依据证据发言的 AI 教练。</b></p>
+<h3 align="center">以你自己为基准的训练与恢复系统</h3>
 
-<p align="center"><sub>本地运行 · 内置 AI 内核 · 网页与桌面 · 支持 Claude / ChatGPT / Gemini / Codex / DeepSeek · Apache-2.0</sub></p>
-
-<p align="center">
-  <a href="#开始使用">开始使用</a> ｜ <a href="#内置-ai-内核">AI 内核</a> ｜ <a href="#接入外部-ai">接入外部 AI</a> ｜ <a href="#有据可依的-ai-教练">证据机制</a> ｜ <a href="#授权由你设定">授权档位</a> ｜ <a href="CHANGELOG.md">更新记录</a>
-</p>
-
-Heartwork 读取你从手表和健康应用导出的数据，在本机算出每项指标相对你个人常态的位置，每天生成一幅画布，再把经过确定性处理的上下文交给你选用的 AI。AI 的每条结论都必须指向具体数据，并通过代码核验。训练计划的修改权限由你设定。
+<p align="center">本地运行　·　证据核验的 AI 教练　·　网页与桌面　·　Apache-2.0</p>
 
 <p align="center">
-  <img src="docs/images/web-dark.jpg" alt="Heartwork 健康画布：节奏跑当天，负荷带出现高心率区的结，红色圆环为疼痛记录" width="100%">
+  <a href="#开始使用">开始使用</a>　·　<a href="#身体判断">身体判断</a>　·　<a href="#ai-教练">AI 教练</a>　·　<a href="#数据与隐私">数据与隐私</a>　·　<a href="CHANGELOG.md">更新记录</a>
 </p>
-<p align="center"><sub>8 周合成示例数据。7 月 22 日节奏跑后，负荷带上出现了高心率区的结；红色圆环是当天的疼痛记录。</sub></p>
+
+<br>
+
+Heartwork 读取手表和健康应用的数据，在本机把每一项指标放回你自己的常态中衡量。每天，它把身体数据画成一幅画布，给出当天最该做的一件事；你提问时，AI 教练只能依据这些数据作答，每一个数字都经过代码核对。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.jpg">
+  <img src="docs/images/hero-light.jpg" alt="Heartwork 主界面：当日画布、今日一件事、相对个人常态的各项指标与身体判断" width="100%">
+</picture>
+
+<br>
+
+<table>
+<tr>
+<td width="33%" valign="top"><b>以你为准</b><br><br>基线来自你自己过去 28 天的数据，用稳健统计剔除偶发波动。只有偏离超过最小有意义变化，才算偏高或偏低。</td>
+<td width="33%" valign="top"><b>凭证据说话</b><br><br>教练的每条结论都指向具体数据。数值、方向、引用由代码逐项核对，不通过的回答不会出现在你面前。</td>
+<td width="33%" valign="top"><b>决定权在你</b><br><br>训练计划的修改权限分三档，由你设定。AI 只能读取档位，不能为自己提权；红黄灯也不能由模型降级。</td>
+</tr>
+</table>
 
 ## 每日画布
 
-恢复、睡眠、负荷、压力、表现，各是一束丝带。状态好于个人常态时，丝带收拢成束；偏离常态时，丝带散开、相互缠绕。高心率训练显示为结，疼痛与不适标为红色圆环。缺失的数据保持灰色虚线，不做插补。
+恢复、睡眠、负荷、压力、表现，各是一束丝带。状态好于常态时丝带收拢，偏离常态时散开缠绕；高心率训练是丝带上的结，疼痛记录是红色圆环。缺失的数据画成灰色虚线，不做插补。
 
-每一笔都可以追溯：悬停即可看到日期、数值、个人常态区间，以及写入这项数据的导入文件和它的 SHA-256。画布可以逐日回看，也可以把一周七幅导出为海报。
+画上每一笔都可追溯：悬停可见日期、数值、你的常态区间，以及这项数据来自哪个导入文件。画布可以逐日回看，一周七幅也可以导出成海报。
 
-## 以你为基准
-
-Heartwork 不用人群平均值评判个人。
-
-- **滚动基线**：近 7 天均值对比此前 28 天的中位数，两个窗口互不重叠。训练负荷有休息日的 0，改为比较 7 日滚动均值，避免基线被 0 拉平。
-- **稳健尺度**：离散度采用 MAD，个别异常值不会扭曲基线。
-- **最小有意义变化**：偏离超过 SWC 才标记为偏高或偏低，日常波动保持中性。
-- **HRV 对数化**：RMSSD 先换算为 lnRMSSD，再参与比较。
-- **训练负荷**：用 ATL、CTL、TSB 描述疲劳、体能与当前状态；没有设备记录的训练可以用 sRPE（RPE × 分钟）补录。
-
-这些计算只在 Python 里做一次，画布、AI 上下文和周报告用的是同一份结果。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/canvas-dark.jpg">
+  <img src="docs/images/canvas-light.jpg" alt="7 月 22 日节奏跑当天的画布：负荷带上出现高心率区的结，恢复带上有疼痛记录" width="100%">
+</picture>
+<p align="center"><sub>节奏跑当天。负荷带上的结来自高心率区，恢复带上的红色圆环是当天的疼痛记录。示例数据为人工合成。</sub></p>
 
 ## 身体判断
 
-除了逐项对比个人基线，Heartwork 还在本机算出以下判断。每一项都写进教练上下文，可被引用和核验。
+在逐项对比常态之外，Heartwork 在本机计算一组身体判断。它们全部由确定性算法得出，方法来自已发表的研究，并作为证据提供给教练。
 
-| 判断 | 依据 |
+<img src="docs/images/body-light.jpg" alt="身体判断面板：展开的比赛预测，含临界速度与各距离预测成绩" width="36%" align="right">
+
+| 判断 | 方法 |
 |---|---|
-| 异常预警 | 夜间静息心率升高且 HRV 下降，连续两晚；有呼吸频率或皮温时一并参考（Alavi 2022、Mishra 2020）。达到最高级时，安全门自动转黄灯 |
-| HRV 趋势 | 7 天基线对比 60 天正常范围、日间波动系数 CV、归一化 HRV（HRV4Training 的方法） |
-| 训练适应 | 稳定、应对良好、适应不良、疲劳累积、疑似功能性过量五种状态；后者用来识别"HRV 偏高但表现下降"的情况（Le Meur 2013、Plews 2013） |
-| 睡眠规律 | 睡眠规律指数 SRI 与社交时差（Phillips 2017、Windred 2024） |
-| 有氧耐久 | 同配速心率趋势、效率因子 EF、长距离心率解耦，按坡度校正配速计算（Minetti 2002、Smyth 2022） |
-| 比赛预测 | 临界速度与 D′，以及 Riegel 和 VDOT 预测（Smyth & Muniz-Pumares 2020） |
-| 体重趋势 | 指数平滑后的真实趋势；每周下降超过 1% 时提醒（Garthe 2011） |
-| 习惯影响 | 打卡时记下"饮酒、咖啡、晚餐晚"等标签，计算它们对第二天 HRV 和睡眠的影响，并给出 95% 置信区间 |
-| 计划完成 | 对比 intervals.icu 日历上的计划课和实际完成的训练 |
+| 异常预警 | 夜间静息心率升高、HRV 下降，连续两晚出现即提示；最高级时安全门自动转黄 |
+| HRV 趋势 | 7 天基线对比 60 天正常范围，并看日间波动 |
+| 训练适应 | 稳定、应对良好、适应不良、疲劳累积、疑似功能性过量 |
+| 睡眠规律 | 睡眠规律指数与社交时差 |
+| 有氧耐久 | 同配速心率、效率因子、长距离心率解耦，按坡度校正 |
+| 比赛预测 | 临界速度，Riegel 与 VDOT |
+| 体重趋势 | 平滑后的真实变化，减重过快时提醒 |
+| 习惯影响 | 饮酒、咖啡、晚餐等标签对次日恢复的影响，附置信区间 |
+| 计划完成 | 对比日历上的计划课与实际训练 |
 
-每天的「今日一件事」由安全门和这些判断确定性生成，不调用模型；也可以推送为桌面通知。
+<br clear="right">
 
-## 有据可依的 AI 教练
+每天早上，这些判断与安全门汇总成「今日一件事」，可推送为桌面通知。这一步不调用任何模型。
 
-Heartwork 给 AI 定下一套必须遵守的规则。无论是内置 AI 内核，还是你接入的外部 agent，都要按这套规则作答。
+<details>
+<summary>方法出处</summary>
 
-| 机制 | 作用 |
+Alavi 2022、Mishra 2020（夜间异常预警）· HRV4Training / Plews 2013、Le Meur 2013（HRV 趋势与功能性过量）· Phillips 2017、Windred 2024（睡眠规律指数）· Minetti 2002（坡度校正配速）· Smyth 2022（心率解耦）· Smyth & Muniz-Pumares 2020（临界速度）· Garthe 2011（减重速率）。阈值与实现细节写在 `scripts/insights.py` 和 `scripts/streams.py` 的文档字符串中。
+
+</details>
+
+## AI 教练
+
+教练可以直接调用模型作答：DeepSeek、OpenAI、Kimi、通义千问、Anthropic，或本机的 Ollama；已有 Claude、ChatGPT 订阅时，也可以通过本机已登录的 Claude Code、Codex CLI 作答。回答实时流式显示，并附用时与 token 用量。
+
+模型看到的是一张编号事实表，引用时只写编号，由系统展开成原始数据再核对。核对不通过时，具体错误会退回给模型重写；仍不通过的回答不展示。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/coach-dark.jpg">
+  <img src="docs/images/coach-light.jpg" alt="通过核验的教练回答：每条观察后附方向标签和证据" width="100%">
+</picture>
+<p align="center"><sub>通过核验的回答。每条观察后附方向标签与证据；悬停证据，画布上对应的丝带随之高亮。</sub></p>
+
+| 核验 | 规则 |
 |---|---|
-| 安全门 | 调用模型之前，先根据近 14 天的疼痛、疾病和警示信号判定红、黄、绿灯。红灯只允许建议就医，黄灯禁止加量 |
-| 签名作业 | 上下文用本机密钥签名；AI 作答期间数据如有变化，提交时会被判为过期 |
-| 证据核验 | 每条结论附带 JSON Pointer 和观测值，代码逐项比对，数值不一致即拒绝 |
-| 方向核验 | 说到「偏高」「下降」这类趋势时，必须声明方向，且要与确定性基线的判定一致 |
-| 分层约束 | 原始数据、确定性指标、实验模型分层存放；实验层不能单独支撑训练处方 |
-| 文字核验 | 结论里出现的每个数值都要能在所引证据或同一条记录里找到；说「缺失」时，所引数据必须真的为空 |
-| 行为评测 | 20 个固定场景回放，包括伪造数值、方向说反、编造数字、把已有数据说成缺失、黄灯下自动改计划等；全部判定正确才能发布 |
+| 安全门 | 作答前，先依据近 14 天的疼痛、疾病、警示信号和夜间异常判定红黄绿灯。红灯只能建议就医，黄灯不得加量 |
+| 签名作业 | 上下文以本机密钥签名，作答期间数据若有变化，回答即作废 |
+| 数值 | 结论中的每个数字都必须出现在所引数据中；说某项"缺失"时，所引数据必须为空 |
+| 方向 | "偏高""下降"等判断必须与确定性基线一致 |
+| 分层 | 实验性模型的结果不能单独支撑训练处方 |
+| 评测 | 20 个固定场景回放，覆盖伪造数值、方向说反、编造数字、黄灯加量等，全部通过才能发布 |
 
-没通过核验的回答不会展示给你。
+### 权限档位
 
-<p align="center">
-  <img src="docs/images/web-coach-light.jpg" alt="通过核验的教练回答：每条结论附带方向标签与证据，右侧为授权档位" width="100%">
-</p>
-<p align="center"><sub>通过核验的回答。每条结论后面附有方向标签和证据，悬停证据时，画布上对应的丝带会高亮。右栏是授权档位。</sub></p>
-
-## 授权由你设定
-
-| 档位 | AI 教练的权限 |
+| 档位 | 教练可以做什么 |
 |---|---|
-| 保守 | 只观察和提醒，不提计划修改；每条建议都要有原始数据支撑 |
-| 标准（默认） | 可以提计划修改，每一条都要你确认后才生效 |
-| 激进 | 同时满足四个条件时，可以直接修改计划：安全门为绿灯、有原始数据证据、置信度达标、72 小时内没有自动调整过。每次修改都保留原计划，7 天内一键撤销 |
+| 保守 | 只观察和提醒，不提计划修改 |
+| 标准（默认） | 可以提出计划修改，每一条都由你确认后生效 |
+| 激进 | 绿灯、有原始数据证据、置信度达标、72 小时内未自动调整过，四项同时满足时可直接修改计划；原计划保留，7 天内可一键撤销 |
 
-档位只能在本机网页或命令行里修改。AI 通过 MCP 只能读取档位，不能给自己提权。安全门在所有档位下都有效。
+档位只能在本机网页或命令行中修改。
 
-## 数据留在本机
+## 数据与隐私
 
-- 工作区默认在 `~/.heartwork`，和代码仓库分开存放。
-- 网页只监听 `127.0.0.1`，会校验请求来源，不加载任何外部资源。
-- 核心零第三方依赖；桌面窗口需要另装 `pywebview`。数据存放在工作区的 SQLite 文件 `heartwork.db` 中，网页、MCP 和桌面版同时写入也不会互相覆盖。
-- 只有在你填写 API Key 后，才会访问 intervals.icu；同步时只读取你自己的数据。把计划课写回日历，必须由你在网页或命令行确认。
-- 内置 AI 内核用云端模型时，本次作业的 coach_context（近期指标、打卡、计划）会发给你选的服务商；选 Ollama 则全程留在本机。API Key 只存在工作区的 `llm.json`，任何界面都不回显。
-- 每个导入的文件都记在 `imports.json` 里，包括文件名、SHA-256 和写入的条数。
+- 数据保存在本机工作区 `~/.heartwork`，与代码仓库分开。存储使用单个 SQLite 文件，网页、MCP 与桌面版同时写入互不覆盖。
+- 网页只监听 `127.0.0.1`，校验请求来源，不加载外部资源。
+- 只有填写 API Key 后才会连接 intervals.icu，且只读取你本人的数据；把计划课写回日历必须由你亲自确认。
+- 使用云端模型时，当次问题所需的数据会发送给你选择的服务商；选择 Ollama 则全程不出本机。所有 Key 只存于工作区，任何界面都不回显。
+- 每个导入文件都留有记录：文件名、SHA-256 与写入条数。
 
 ## 开始使用
 
-需要 Python 3.9 或更高版本。在仓库根目录运行：
+需要 Python 3.9 或更高版本，核心不依赖任何第三方库。
 
 ```bash
-python scripts/heartwork.py init --demo   # 载入 8 周合成数据
-python scripts/heartwork.py web           # 打开 http://127.0.0.1:8765
+python scripts/heartwork.py init --demo     # 载入 8 周合成示例数据
+python scripts/heartwork.py web             # 打开 http://127.0.0.1:8765
+python scripts/heartwork.py desktop         # 或以桌面窗口打开（需先 pip install pywebview）
 ```
 
-要用自己的数据，就去掉 `--demo` 初始化一个空工作区，然后把文件拖进网页的「导入」区域，或者用命令行导入：
+使用自己的数据时，去掉 `--demo` 初始化空工作区，再用以下任一方式导入：
 
 ```bash
-python scripts/heartwork.py import ~/Downloads/activities/ export.zip daily.csv
-python scripts/heartwork.py profile --hr-max 188 --hr-rest 48   # 填写最大心率后才会计算心率区间
+python scripts/heartwork.py import ~/Downloads/activities/ export.zip daily.csv   # 文件导入，也可拖进网页
+python scripts/heartwork.py intervals --api-key <key>                            # 绑定 intervals.icu
+python scripts/heartwork.py intervals sync                                       # 同步健康数据、训练与计划课
+python scripts/heartwork.py profile --hr-max 188 --hr-rest 48                    # 填写最大心率后计算心率区间
 ```
+
+配置 AI 教练：
+
+```bash
+python scripts/heartwork.py model --provider deepseek --api-key <key>   # 或 openai / anthropic / ollama / claude-cli / codex-cli
+python scripts/heartwork.py model --test
+python scripts/heartwork.py coach "今天适合跑间歇吗"
+```
+
+<details>
+<summary>支持的文件格式</summary>
 
 | 格式 | 读取内容 |
 |---|---|
-| `.fit` | 开始时间、时长、距离、平均心率、逐秒心率（用标准库解析，不依赖 SDK） |
-| `.gpx` / `.tcx` | 轨迹时间、距离、心率扩展 |
-| `.csv` | 每日指标，中英文表头都能识别：`date/日期`、`hrv`、`静息心率`、`睡眠时长`、`体重` 等 |
-| Apple Health `export.xml` 或 `.zip` | 静息心率、体重、睡眠（按醒来那天归属）、体能训练 |
+| `.fit` | 时间、距离、心率与海拔的逐秒数据（标准库解析，不依赖 SDK） |
+| `.gpx` / `.tcx` | 轨迹时间、距离、海拔、心率 |
+| `.csv` | 每日指标，中英文表头均可识别：日期、HRV、静息心率、睡眠时长、体重等 |
+| Apple Health `export.xml` / `.zip` | 静息心率、体重、睡眠、体能训练 |
 
-Apple Health 记录的 HRV 是 SDNN，和 Heartwork 使用的 RMSSD 口径不同，导入时会自动跳过。
+Apple Health 记录的 HRV 为 SDNN，与 Heartwork 使用的 RMSSD 口径不同，导入时自动跳过。
 
-## 内置 AI 内核
+</details>
 
-Heartwork 可以直接调用模型 API 作答，不需要外部 agent。支持任何 OpenAI 兼容接口（DeepSeek、OpenAI、Kimi、通义千问、Ollama 本机模型）和 Anthropic 原生接口，全部用标准库实现。
-
-```bash
-python scripts/heartwork.py model --provider deepseek --api-key sk-...   # 也可用环境变量 DEEPSEEK_API_KEY
-python scripts/heartwork.py model --test                                 # 测试连通
-python scripts/heartwork.py coach "今天适合跑间歇吗"                       # 命令行直接问
-python scripts/heartwork.py desktop                                      # 桌面窗口（需要 pip install pywebview）
-```
-
-已有 Claude 或 ChatGPT 订阅时，可以选「Claude 订阅（Claude Code）」或「ChatGPT 订阅（Codex CLI）」，直接用本机已登录的 CLI 作答，不需要 API Key（`model --provider claude-cli`）。
-
-内置内核会把上下文整理成一张编号事实表，模型只需写 `{"fact": "F12"}`，系统按编号展开成指针和数值后再核验。这样输入更短，输出也更短，抄错数值的情况也更少。
-
-网页和桌面窗口里点「问 AI」，回答会实时流式显示。每次作答都要经过签名校验和证据核验；没通过时，核验错误会回传给模型重写，默认最多 3 次。仍没通过的回答不展示。每次作答的耗时和 token 用量（含缓存命中）会显示出来，并和核验记录一起保存在 `jobs/<job_id>.agent.json`。所有核验都在本机完成，不额外消耗 token；上下文用紧凑 JSON 发送，重写时前缀不变，可以命中服务商的提示词缓存。
-
-## 接入外部 AI
+<details>
+<summary>接入 Claude Code、Codex、Gemini 等 AI agent</summary>
 
 ```bash
 claude mcp add heartwork -- python scripts/heartwork.py mcp        # Claude Code
@@ -143,74 +159,67 @@ codex mcp add heartwork -- python scripts/heartwork.py mcp         # Codex
 gemini mcp add heartwork python scripts/heartwork.py mcp           # Gemini CLI
 ```
 
-Claude Desktop、DeepSeek Harness、ChatGPT 的配置方法见 [integrations/](integrations/)。接入后可以直接提问，例如「今天适合训练吗」。AI 会先调用 `start_coach_job` 获取上下文，再调用 `submit_coach_response` 提交回答；通过核验的回答会同步显示在网页里。
+Claude Desktop、DeepSeek Harness、ChatGPT 的配置见 [integrations/](integrations/)。agent 通过 `start_coach_job` 获取签名上下文，通过 `submit_coach_response` 提交回答，核验规则与内置教练相同。MCP 还提供 `body_insights`、`morning_brief`、`sync_intervals` 等只读工具；修改计划、调整档位、写回日历不对 agent 开放。
 
-| MCP 工具 | 作用 |
-|---|---|
-| `status` / `get_profile` / `get_autonomy` | 查看工作区概况、个人档案、授权档位 |
-| `import_files` / `log_event` | 导入文件；记录晨间恢复、RPE、疼痛 |
-| `weekly_report` | 生成 Obsidian 周报告 |
-| `start_coach_job` | 生成签名作业，包含上下文、规则、相关技能和回复模板 |
-| `submit_coach_response` | 验证签名，检查数据是否有变化，逐项核验证据 |
-| `list_pending_suggestions` / `run_eval` | 查看待确认的建议；运行行为评测 |
-
-8 项专项技能（恢复、疼痛、跑步、计划、睡眠、减重、体态、复盘）可以装进 agent 的技能目录：
+8 项专项技能（恢复、疼痛、跑步、计划、睡眠、减重、体态、复盘）可以安装到 agent 的技能目录：
 
 ```bash
 python scripts/heartwork.py install-skills --target claude   # 也支持 dsh / agents / gemini
 ```
 
-不支持 MCP 的 AI（网页版 ChatGPT、Gemini、DeepSeek 等）也能用：在网页里提问，复制提示词发给 AI，再把它的回复粘贴回来做核验。
+不支持 MCP 的 AI 也可以使用：在网页中生成作业，把提示词交给它，再把回答贴回来核验。
 
-## 命令
+</details>
+
+<details>
+<summary>全部命令</summary>
 
 ```bash
 python scripts/heartwork.py status                          # 工作区概况
-python scripts/heartwork.py intervals --api-key <key>       # 绑定 intervals.icu
-python scripts/heartwork.py intervals sync                  # 同步健康数据、训练和计划课
 python scripts/heartwork.py insights                        # 身体判断
-python scripts/heartwork.py brief --notify                  # 今日一件事，并弹出桌面通知
-python scripts/heartwork.py brief --schedule 07:30          # 打印每天定时推送的系统命令
-python scripts/heartwork.py checkin --recovery 6 --tags 饮酒,晚餐晚
-python scripts/heartwork.py coach "跑完腿沉，明天怎么练"      # 内置 AI 内核作答并核验
-python scripts/heartwork.py model                           # 查看 AI 内核设置
-python scripts/heartwork.py checkin --type morning_checkin --recovery 6 --pain 2 --note "右小腿紧"
+python scripts/heartwork.py brief --notify                  # 今日一件事，并推送桌面通知
+python scripts/heartwork.py brief --schedule 07:30          # 生成每日定时推送的系统命令
+python scripts/heartwork.py checkin --recovery 6 --pain 2 --tags 饮酒,晚餐晚 --note "右小腿紧"
+python scripts/heartwork.py coach "跑完腿沉，明天怎么练"
 python scripts/heartwork.py report                          # 生成本周 Obsidian 周报告
 python scripts/heartwork.py suggestions                     # 待确认的建议
 python scripts/heartwork.py decide <key> --accept
 python scripts/heartwork.py plan-apply <key> --text "周四间歇改为轻松跑" --confirm
-python scripts/heartwork.py autonomy autonomous --confirm   # 授权档位：conservative / balanced / autonomous
+python scripts/heartwork.py autonomy autonomous --confirm   # conservative / balanced / autonomous
 python scripts/heartwork.py undo <key>                      # 撤销一次自动调整
+python scripts/heartwork.py intervals push --date 2026-11-02 --name "轻松跑" --minutes 40 --confirm
 python scripts/heartwork.py eval                            # 行为评测
 ```
 
 所有命令都可以用 `--home <目录>` 或环境变量 `HEARTWORK_HOME` 指定工作区。
 
+</details>
+
 ## 适用范围
 
-Heartwork 用于个人趋势记录、运动教育与研究，不提供医学诊断、治疗或紧急决策。如果出现胸痛、晕厥、无法承重等情况，请立即就医。
+Heartwork 用于个人趋势记录、运动教育与研究，不提供医学诊断、治疗或紧急决策。出现胸痛、晕厥、无法承重等情况，请立即就医。
 
-- 多维状态和变化候选属于实验层，只描述统计上的偏移。
-- 设备负荷、心率区 TRIMP、sRPE 三种口径的尺度不同，系统会标注口径，但不做换算。
-- 心率区间只在填写了最大心率或区间边界后才会计算。
-- 仓库里的示例数据全部是人工合成的。
+身体判断描述的是相对你个人常态的统计偏移，异常预警可能由饮酒、旅行或高强度训练引起；比赛预测假定数据中包含接近全力的成绩。仓库中的示例数据全部为人工合成。
 
-完整规则见 [PRIVACY](PRIVACY.md)、[SECURITY](SECURITY.md) 和 [DISCLAIMER](DISCLAIMER.md)，方法说明见 [08_方法与边界](08_方法与边界/)。本仓库同时也是一个 Obsidian 库，入口是 [00_首页](00_首页.md)。
+完整说明见 [PRIVACY](PRIVACY.md)、[SECURITY](SECURITY.md)、[DISCLAIMER](DISCLAIMER.md) 与 [方法与边界](08_方法与边界/)。本仓库同时是一个 Obsidian 库，入口为 [00_首页](00_首页.md)。
 
-## 项目结构
+<details>
+<summary>项目结构</summary>
 
 ```text
-scripts/            核心实现：基线、导入与活动流分析（streams）、身体判断（insights）、intervals.icu 同步、
-                    晨报（brief）、教练运行层、AI 内核（llm / coach_agent）、API、命令行、MCP、网页与桌面
-scripts/web/        本机网页（单文件，不依赖外部资源）
+scripts/            基线、导入与活动分析、身体判断、intervals.icu 同步、晨报、
+                    教练运行层、AI 内核、API、命令行、MCP、网页与桌面
+scripts/web/        本机网页（单文件，无外部资源）
 skills/             8 项专项技能与路由表
-integrations/       Claude / ChatGPT / Gemini / Codex / DeepSeek Harness 接入说明
+integrations/       各 AI 客户端的接入说明
 schemas/            周输入、Context v2、Response v2
 examples/           合成示例
 tests/              算法、导入、教练安全、授权、溯源、MCP 与网页测试
 01–08_*/            Obsidian 模板、周报告与方法文档
 ```
 
+</details>
+
 ## 许可
 
-代码与文档以 [Apache License 2.0](LICENSE) 发布。科学方法、第三方名称和引用归各自的权利人所有。
+代码与文档以 [Apache License 2.0](LICENSE) 发布。科学方法、第三方名称与引用归各自权利人所有。
