@@ -5,6 +5,9 @@ For a day D: recent = D-6..D (7 days, inclusive), baseline = D-28..D-1 (28 days
 ending the day before). Center = baseline median, scale = 1.4826 x MAD with a
 per-metric floor (MIN_SCALE), SWC (smallest worthwhile change) = 0.5 x scale.
 HRV is analysed as ln(RMSSD); displayed values are converted back to ms.
+Training load is spiky (rest days are 0), so it is compared as a rolling 7-day
+mean: recent = the 7-day mean ending D, baseline = the 7-day means ending
+D-34..D-7, so both windows still never overlap.
 Descriptive only: not a diagnosis, not a threshold.
 """
 
@@ -29,7 +32,7 @@ METRICS = {
                          "transform": "identity"},
     "sleep_score": {"label": "睡眠评分", "unit": "分", "polarity": 1, "transform": "identity"},
     "training_load": {"label": "训练负荷", "unit": "a.u.", "polarity": 0,
-                      "transform": "identity"},
+                      "transform": "identity", "rolling": RECENT_DAYS},
     "stress": {"label": "压力", "unit": "a.u.", "polarity": -1, "transform": "identity"},
     "vo2max": {"label": "VO₂max", "unit": "ml/kg/min", "polarity": 1, "transform": "identity"},
     "running_ability": {"label": "跑步能力", "unit": "a.u.", "polarity": 1,
@@ -112,16 +115,45 @@ def window(rows, key, first, last):
     return values
 
 
+def rolling_mean(rows, key, day, days):
+    """Mean over day-days+1..day; a day with a row but no value counts as 0 (no session)."""
+    values = []
+    for offset in range(days):
+        row = rows.get(_shift(day, -offset))
+        if row is not None:
+            value = forward(key, row.get(key))
+            values.append(0.0 if value is None else value)
+    return sum(values) / len(values) if len(values) >= MIN_RECENT + 1 else None
+
+
+def _rolling_windows(rows, key, day, days):
+    recent = rolling_mean(rows, key, day, days)
+    base = []
+    for offset in range(RECENT_DAYS, RECENT_DAYS + BASELINE_DAYS):
+        value = rolling_mean(rows, key, _shift(day, -offset), days)
+        if value is not None:
+            base.append(value)
+    return ([] if recent is None else [recent]), base
+
+
 def metric_status(daily, key, day, _rows=None):
     meta = METRICS.get(key)
     if meta is None:
         return None
     rows = _rows if _rows is not None else index_rows(daily)
     day = _compact(day)
-    recent = window(rows, key, _shift(day, -(RECENT_DAYS - 1)), day)
-    base = window(rows, key, _shift(day, -(RECENT_DAYS + BASELINE_DAYS - 1)), _shift(day, -RECENT_DAYS))
-    if len(base) < MIN_BASELINE or len(recent) < MIN_RECENT:
-        return None
+    if meta.get("rolling"):
+        recent, base = _rolling_windows(rows, key, day, meta["rolling"])
+        n_recent = sum(1 for offset in range(RECENT_DAYS) if _shift(day, -offset) in rows)
+        if len(base) < MIN_BASELINE or not recent:
+            return None
+    else:
+        recent = window(rows, key, _shift(day, -(RECENT_DAYS - 1)), day)
+        base = window(rows, key, _shift(day, -(RECENT_DAYS + BASELINE_DAYS - 1)),
+                      _shift(day, -RECENT_DAYS))
+        n_recent = len(recent)
+        if len(base) < MIN_BASELINE or n_recent < MIN_RECENT:
+            return None
     center = median(base)
     scale = robust_scale(base, center, key)
     swc = 0.5 * scale
@@ -144,7 +176,8 @@ def metric_status(daily, key, day, _rows=None):
         "band": [round(inverse(key, center - swc), 2), round(inverse(key, center + swc), 2)],
         "scale": round(scale, 4), "swc": round(swc, 4), "z": round(diff / scale, 2),
         "status": status, "oriented": oriented,
-        "n_recent": len(recent), "n_baseline": len(base), "transform": meta["transform"],
+        "n_recent": n_recent, "n_baseline": len(base), "transform": meta["transform"],
+        "aggregate": "rolling_%d_day_mean" % meta["rolling"] if meta.get("rolling") else "daily",
     }
 
 
