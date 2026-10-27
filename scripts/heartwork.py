@@ -56,6 +56,7 @@ def install_skills(target, dest=None):
 
 def _coach(home, args):
     import coach_agent
+    received = [0]
 
     def emit(event):
         kind = event["type"]
@@ -64,9 +65,11 @@ def _coach(home, args):
                 event["provider"], event["model"], event["task"], event["gate"],
                 ", ".join(event["skills"])), file=sys.stderr)
         elif kind == "attempt":
+            received[0] = 0
             print("第 %d 次作答…" % event["n"], file=sys.stderr, flush=True)
         elif kind == "text":
-            sys.stderr.write(".")
+            received[0] += len(event["text"])
+            sys.stderr.write("\r  已收到 %d 字" % received[0])
             sys.stderr.flush()
         elif kind == "rejected":
             print("\n核验拒绝：" + "；".join("[%s] %s" % (item["code"], item["message"])
