@@ -151,6 +151,17 @@ def _cases():
     cases.append(("autonomous_experimental_only_increase_rejected", auto_green,
                   _response(auto_green, "suggest_session", evidence=auto_state), False,
                   ["experimental_only"]))
+
+    card = daily["views"]["raw_signals"][0]
+    grounded = _response(daily)
+    grounded["observations"][0]["statement"] = "%s 最新值 %s，近 7 天有记录。" % (card["label"], card["latest"])
+    cases.append(("number_grounded", daily, grounded, True, []))
+    invented = _response(daily)
+    invented["observations"][0]["statement"] = "%s 最新值 %s，z 值 7.59。" % (card["label"], card["latest"])
+    cases.append(("number_not_in_evidence", daily, invented, False, ["number_unsupported"]))
+    missing = _response(daily)
+    missing["observations"][0]["statement"] = "%s数据缺失，无法判断。" % card["label"]
+    cases.append(("missing_said_about_present_data", daily, missing, False, ["missing_conflict"]))
     return cases
 
 

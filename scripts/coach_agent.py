@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from datetime import datetime
 
 import coach_runtime
@@ -36,15 +37,18 @@ def system_prompt(job):
     for skill in job["skills"]:
         parts += ["## Skill: %s" % skill, coach_skills.skill_text(skill), ""]
     parts += ["## Response v2 骨架", "```json",
-              json.dumps(coach_runtime.response_template(job["task"]), ensure_ascii=False, indent=2),
-              "```", "", "只回复一个 JSON 对象，不要输出解释或代码围栏。"]
+              json.dumps(coach_runtime.response_template(job["task"]), ensure_ascii=False),
+              "```", "",
+              "篇幅：observations 最多 6 条、recommendations 最多 3 条，statement 和 action 各一两句。",
+              "只回复一个 JSON 对象，不要输出解释或代码围栏。"]
     return "\n".join(parts)
 
 
 def user_prompt(job):
     query = job["context"].get("query") or "（用户没有提问，按任务默认给出）"
+    # Compact JSON: same content, far fewer input tokens than indented.
     return "用户问题：%s\n\n## coach_context\n```json\n%s\n```" % (
-        query, json.dumps(job["context"], ensure_ascii=False, indent=2))
+        query, json.dumps(job["context"], ensure_ascii=False, separators=(",", ":")))
 
 
 def repair_prompt(errors):
@@ -54,6 +58,14 @@ def repair_prompt(errors):
     lines.append("请对照 coach_context 修正：observed_value 必须与指针处的值逐字相同，"
                  "方向 claims 必须等于 baseline_status。重新输出完整的 JSON 对象。")
     return "\n".join(lines)
+
+
+def _totals(record):
+    attempts = record["attempts"]
+    return {"seconds": round(sum(item.get("seconds", 0) for item in attempts), 1),
+            "input_tokens": sum(item.get("usage", {}).get("input") or 0 for item in attempts),
+            "cached_tokens": sum(item.get("usage", {}).get("cached") or 0 for item in attempts),
+            "output_tokens": sum(item.get("usage", {}).get("output") or 0 for item in attempts)}
 
 
 def _log(base, job_id, record):
@@ -75,11 +87,13 @@ def run(base, query, task=None, as_of=None, emit=None):
               "started_at": datetime.now().isoformat(timespec="seconds"), "attempts": []}
     for attempt in range(1, cfg["max_attempts"] + 1):
         emit({"type": "attempt", "n": attempt})
+        usage, started = {}, time.monotonic()
         try:
             text = llm.chat(cfg, system, messages,
-                            lambda kind, chunk: emit({"type": kind, "text": chunk}))
+                            lambda kind, chunk: emit({"type": kind, "text": chunk}), usage)
         except llm.LLMError as exc:
-            record["attempts"].append({"n": attempt, "error": str(exc)})
+            record["attempts"].append({"n": attempt, "error": str(exc),
+                                       "seconds": round(time.monotonic() - started, 1)})
             _log(base, job["job_id"], record)
             final = {"type": "error", "job_id": job["job_id"], "message": str(exc)}
             emit(final)
@@ -89,20 +103,25 @@ def run(base, query, task=None, as_of=None, emit=None):
         except (ValueError, json.JSONDecodeError) as exc:
             result = {"valid": False, "errors": [{"code": "not_json", "path": "$", "message": str(exc)}]}
         record["attempts"].append({"n": attempt, "chars": len(text), "valid": result["valid"],
-                                   "errors": result["errors"]})
+                                   "errors": result["errors"], "usage": usage,
+                                   "text": None if result["valid"] else text,
+                                   "seconds": round(time.monotonic() - started, 1)})
+        record["totals"] = _totals(record)
         _log(base, job["job_id"], record)
         if result["valid"]:
             final = {"type": "done", "job_id": job["job_id"], "attempts": attempt,
+                     "totals": record["totals"],
                      "suggestions": result["suggestions"], "auto_applied": result["auto_applied"],
                      "markdown": result["markdown"]}
             emit(final)
             return final
-        emit({"type": "rejected", "n": attempt, "errors": result["errors"]})
+        emit({"type": "rejected", "n": attempt, "errors": result["errors"],
+              "totals": record["totals"]})
         if any(item.get("code") in ("stale", "signature") for item in result["errors"]):
             break
         messages += [{"role": "assistant", "content": text},
                      {"role": "user", "content": repair_prompt(result["errors"])}]
-    final = {"type": "failed", "job_id": job["job_id"],
+    final = {"type": "failed", "job_id": job["job_id"], "totals": _totals(record),
              "message": "模型 %d 次作答都没有通过核验，回答不展示。" % len(record["attempts"])}
     emit(final)
     return final

@@ -640,7 +640,7 @@ async function askAI(body){
       add("no",`核验拒绝，带着错误让模型重写<br>${ev.errors.slice(0,4).map(e=>`<code>${esc(e.code)}</code> ${esc(e.path)} ${esc(e.message)}`).join("<br>")}`)}
     else if(ev.type==="done"){if(beat)beat.classList.replace("run","ok");const steps=trace.innerHTML;S.live.delete(jobId);
       const full=await api("/api/job?id="+encodeURIComponent(jobId));jobCard(full);
-      const c=document.getElementById(jobId);c.classList.add("live");c.insertAdjacentHTML("beforeend",`<div class="trace">${steps}<div class="beat ok">第 ${ev.attempts} 次作答通过确定性核验</div></div>`);
+      const c=document.getElementById(jobId);c.classList.add("live");c.insertAdjacentHTML("beforeend",`<div class="trace">${steps}<div class="beat ok">第 ${ev.attempts} 次作答通过确定性核验<span class="muted num">　${ev.totals.seconds} 秒 · 输入 ${ev.totals.input_tokens}（缓存 ${ev.totals.cached_tokens}）· 输出 ${ev.totals.output_tokens} tokens</span></div></div>`);
       loadSuggs();loadPlan();const na=(ev.auto_applied||[]).length,np=ev.suggestions.length-na;
       toast(na?`激进档已自动改计划 ${na} 条，可在右栏撤销`:np?`有 ${np} 条改计划建议等你确认`:"已通过核验")}
     else if(ev.type==="failed"||ev.type==="error"){if(beat)beat.classList.replace("run","no");stream.remove();think.remove();if(jobId)S.live.delete(jobId);

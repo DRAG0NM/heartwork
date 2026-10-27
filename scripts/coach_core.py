@@ -302,6 +302,108 @@ def _claim_errors(observation, path, context):
     return errors
 
 
+# Numbers that count things or name dates are not measurements; everything else in a
+# statement must come from the cited evidence (or its sibling fields in the same record).
+NUMBER = re.compile(r"(?<![A-Za-z0-9_.\u2080-\u2089])(\d+(?:\.\d+)?)(?![\d.]*\d)"
+                    r"(?!\s*(?:年|月|日|号|天|周|次|个|项|条|组|小时|晚|days?\b|weeks?\b))")
+MISSING_WORDS = re.compile(r"缺失|缺少|没有数据|无数据|未记录|未提供|未设置|空缺|\bmissing\b|\bno data\b", re.I)
+CONVERSIONS = (1.0, 1 / 60.0, 1 / 1000.0, 1 / 3600.0, 100.0)
+
+
+def _numbers(value, out, depth=2):
+    if isinstance(value, bool) or value is None or depth < 0:
+        return out
+    if isinstance(value, (int, float)):
+        out.append(float(value))
+    elif isinstance(value, list):
+        for item in value:
+            _numbers(item, out, depth)
+    elif isinstance(value, dict):
+        for item in value.values():
+            _numbers(item, out, depth - 1)
+    return out
+
+
+def _empty(value):
+    return value is None or value == [] or value == "" or value == {}
+
+
+def _cited(context, evidence):
+    """(actual value, parent record) for every evidence item whose pointer resolves."""
+    found = []
+    for item in evidence:
+        pointer = item.get("pointer") if isinstance(item, dict) else None
+        if not isinstance(pointer, str):
+            continue
+        try:
+            actual = resolve_pointer(context, pointer)
+            parent = resolve_pointer(context, pointer.rsplit("/", 1)[0])
+        except (KeyError, IndexError, ValueError, TypeError):
+            continue
+        found.append((pointer, actual, parent))
+    return found
+
+
+def _supported(number, text, values):
+    decimals = len(text.split(".", 1)[1]) if "." in text else 0
+    tolerance = 0.5 * 10 ** -decimals + 1e-9
+    return any(abs(abs(value) * factor - number) <= tolerance
+               for value in values for factor in CONVERSIONS)
+
+
+def _locate(context, number, text, limit=2):
+    """JSON Pointers in the context whose value matches number (for the repair hint)."""
+    hits = []
+
+    def walk(value, pointer):
+        if len(hits) >= limit:
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key not in ("content_sha256", "context_metrics", "policy"):
+                    walk(item, "%s/%s" % (pointer, str(key).replace("~", "~0").replace("/", "~1")))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, "%s/%d" % (pointer, index))
+        elif not isinstance(value, bool) and isinstance(value, (int, float)) and                 _supported(number, text, [float(value)]):
+            hits.append(pointer)
+
+    walk(context, "")
+    return hits
+
+
+def _text_errors(observation, path, context):
+    """Statement vs evidence: unsupported numbers and "missing" said about present data."""
+    statement = str(observation.get("statement") or "")
+    cited = _cited(context, observation.get("evidence") or [])
+    errors = []
+    values = []
+    for pointer, actual, parent in cited:
+        _numbers(actual, values)
+        if pointer.count("/") > 2:  # sibling fields of a record, never a whole section
+            _numbers(parent, values)
+    for match in NUMBER.finditer(statement):
+        text = match.group(1)
+        digits = text.replace(".", "")
+        if len(digits) >= 8 and "." not in text:
+            continue  # compact date such as 20260810
+        if not _supported(float(text), text, values):
+            where = _locate(context, float(text), text)
+            errors.append({"code": "number_unsupported", "path": path + ".statement",
+                           "message": "number %s is not in the cited evidence; %s" % (
+                               text, "add evidence with pointer %s" % " or ".join(where) if where
+                               else "no such value in coach_context, drop it")})
+    for match in MISSING_WORDS.finditer(statement):
+        if any(mark in statement[max(0, match.start() - 2):match.start()] for mark in NEGATIONS):
+            continue
+        if not any(_empty(actual) or pointer.startswith("/data_status") for pointer, actual, _ in cited):
+            errors.append({"code": "missing_conflict", "path": path + ".statement",
+                           "message": "statement says data is missing but every cited value is present; "
+                                      "cite the empty field or /data_status, or correct the statement"})
+        break
+    return errors
+
+
 def validate_response(response, context):
     errors = []
     unsigned_context = {key: value for key, value in context.items()
@@ -327,6 +429,7 @@ def validate_response(response, context):
             errors.extend(_evidence_errors(item, "$.observations[%d].evidence[%d]" %
                                            (index, evidence_index), context, True))
         errors.extend(_claim_errors(observation, "$.observations[%d]" % index, context))
+        errors.extend(_text_errors(observation, "$.observations[%d]" % index, context))
         if observation.get("confidence") == "high" and "experimental_model" in layers:
             errors.append({"code": "experimental_confidence",
                            "path": "$.observations[%d].confidence" % index,

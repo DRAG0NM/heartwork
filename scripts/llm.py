@@ -131,17 +131,24 @@ def _safe_lines(response):
         raise LLMError("模型服务连接中断：%s" % exc) from None
 
 
-def _openai(cfg, system, messages, on_delta, json_mode):
+def _openai(cfg, system, messages, on_delta, json_mode, usage, extras=True):
     body = {"model": cfg["model"], "stream": True, "temperature": cfg["temperature"],
             "messages": [{"role": "system", "content": system}] + messages}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
+    if extras:
+        body["stream_options"] = {"include_usage": True}
     headers = {"Authorization": "Bearer %s" % cfg["api_key"]} if cfg["api_key"] else {}
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
     parts = []
     for event in _post_stream(url, headers, body):
         if event.get("error"):
             raise LLMError(json.dumps(event["error"], ensure_ascii=False)[:600])
+        if event.get("usage"):
+            info = event["usage"]
+            usage.update(input=info.get("prompt_tokens"), output=info.get("completion_tokens"),
+                         cached=info.get("prompt_cache_hit_tokens")
+                         or (info.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
         for choice in event.get("choices") or []:
             delta = choice.get("delta") or {}
             thinking = delta.get("reasoning_content") or delta.get("reasoning")
@@ -154,15 +161,26 @@ def _openai(cfg, system, messages, on_delta, json_mode):
     return "".join(parts)
 
 
-def _anthropic(cfg, system, messages, on_delta):
-    body = {"model": cfg["model"], "max_tokens": 8000, "stream": True, "system": system,
-            "temperature": min(cfg["temperature"], 1.0), "messages": messages}
+def _anthropic(cfg, system, messages, on_delta, usage):
+    # Cache the system prompt and the context message: repair turns resend both unchanged.
+    first = dict(messages[0], content=[{"type": "text", "text": messages[0]["content"],
+                                        "cache_control": {"type": "ephemeral"}}])
+    body = {"model": cfg["model"], "max_tokens": 8000, "stream": True,
+            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            "temperature": min(cfg["temperature"], 1.0), "messages": [first] + messages[1:]}
     headers = {"x-api-key": cfg["api_key"], "anthropic-version": "2023-06-01"}
     url = cfg["base_url"].rstrip("/") + "/v1/messages"
     parts = []
     for event in _post_stream(url, headers, body):
         if event.get("type") == "error":
             raise LLMError(json.dumps(event.get("error"), ensure_ascii=False)[:600])
+        if event.get("type") == "message_start":
+            info = (event.get("message") or {}).get("usage") or {}
+            cached = info.get("cache_read_input_tokens") or 0
+            usage.update(input=(info.get("input_tokens") or 0) + cached
+                         + (info.get("cache_creation_input_tokens") or 0), cached=cached)
+        elif event.get("type") == "message_delta" and event.get("usage"):
+            usage["output"] = event["usage"].get("output_tokens")
         delta = event.get("delta") or {}
         if delta.get("type") == "text_delta":
             parts.append(delta["text"])
@@ -173,20 +191,25 @@ def _anthropic(cfg, system, messages, on_delta):
     return "".join(parts)
 
 
-def chat(cfg, system, messages, on_delta=None):
-    """Stream one completion; returns the full text. on_delta(kind, text) sees text/thinking chunks."""
+def chat(cfg, system, messages, on_delta=None, usage=None):
+    """Stream one completion; returns the full text.
+
+    on_delta(kind, text) sees text/thinking chunks; usage (a dict) receives
+    input/cached/output token counts when the server reports them.
+    """
+    usage = {} if usage is None else usage
     if not cfg.get("model") or not cfg.get("base_url"):
         raise LLMError("还没选模型：先在设置里填好服务商和模型")
     if cfg["protocol"] == "anthropic":
         if not cfg["api_key"]:
             raise LLMError("缺少 API Key")
-        return _anthropic(cfg, system, messages, on_delta)
+        return _anthropic(cfg, system, messages, on_delta, usage)
     try:
-        return _openai(cfg, system, messages, on_delta, cfg.get("json_mode", True))
+        return _openai(cfg, system, messages, on_delta, cfg.get("json_mode", True), usage)
     except LLMError as exc:
-        # Some compatible servers reject response_format; retry once without it.
-        if cfg.get("json_mode", True) and "response_format" in str(exc):
-            return _openai(cfg, system, messages, on_delta, False)
+        # Some compatible servers reject response_format or stream_options; retry once without.
+        if "response_format" in str(exc) or "stream_options" in str(exc):
+            return _openai(cfg, system, messages, on_delta, False, usage, extras=False)
         raise
 
 

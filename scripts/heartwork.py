@@ -75,7 +75,10 @@ def _coach(home, args):
             print("\n核验拒绝：" + "；".join("[%s] %s" % (item["code"], item["message"])
                                          for item in event["errors"][:5]), file=sys.stderr)
         elif kind == "done":
-            print("\n通过核验（第 %d 次）\n" % event["attempts"], file=sys.stderr)
+            totals = event["totals"]
+            print("\n通过核验（第 %d 次）· 用时 %.1f 秒 · 输入 %d tokens（缓存命中 %d）· 输出 %d tokens\n" % (
+                event["attempts"], totals["seconds"], totals["input_tokens"],
+                totals["cached_tokens"], totals["output_tokens"]), file=sys.stderr)
 
     result = coach_agent.run(home, args.question, args.task, args.as_of, emit)
     if result["type"] != "done":
