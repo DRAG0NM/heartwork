@@ -1,6 +1,7 @@
-<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.svg">
   <img src="docs/images/banner.svg" alt="Heartwork 健康画布" width="100%">
-</p>
+</picture>
 
 <h3 align="center">以你自己为基准的训练与恢复系统</h3>
 
@@ -33,13 +34,15 @@ Heartwork 读取手表和健康应用的数据，在本机把每一项指标放�
 
 恢复、睡眠、负荷、压力、表现，各是一束丝带。状态好于常态时丝带收拢，偏离常态时散开缠绕；高心率训练是丝带上的结，疼痛记录是红色圆环。缺失的数据画成灰色虚线，不做插补。
 
+画布会呼吸。好于常态的丝带同步起伏，偏离常态的各自错开；没有数据的地方保持静止。切换日期时，丝带从前一天的形态过渡到当天；教练引用某项数据时，光点会沿对应的丝带跑过。
+
 画上每一笔都可追溯：悬停可见日期、数值、你的常态区间，以及这项数据来自哪个导入文件。画布可以逐日回看，一周七幅也可以导出成海报。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/canvas-dark.jpg">
-  <img src="docs/images/canvas-light.jpg" alt="7 月 22 日节奏跑当天的画布：负荷带上出现高心率区的结，恢复带上有疼痛记录" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/canvas-motion-dark.webp">
+  <img src="docs/images/canvas-motion-light.webp" alt="画布动画：丝带随静息心率起伏，切换到节奏跑当天后，负荷带上的结随心跳搏动，疼痛圆环向外扩散" width="100%">
 </picture>
-<p align="center"><sub>节奏跑当天。负荷带上的结来自高心率区，恢复带上的红色圆环是当天的疼痛记录。示例数据为人工合成。</sub></p>
+<p align="center"><sub>从平稳的一天切换到节奏跑当天。丝带每五次静息心跳起伏一次，节奏随当天 HRV 微微变化；负荷带上的结按静息心率跳动，红色圆环是当天的疼痛记录。示例数据为人工合成。</sub></p>
 
 ## 身体判断
 
